@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+using KitchenChaos_Server.Message;
+using KitchenChaos_Server.Room;
 
 namespace KitchenChaos_Server
 {
@@ -22,6 +24,8 @@ namespace KitchenChaos_Server
         /// </summary>
         private byte[] receiveBuffer = new byte[4096];
         private int bufferedBytes = 0;// 缓冲区中当前有效的字节数
+
+        public ServerRoom CurrentRoom { get; set; }
 
         public ServerClient(int _playerId, TcpClient _client, GameServer _server)
         {

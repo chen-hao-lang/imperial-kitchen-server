@@ -6,6 +6,7 @@ namespace KitchenChaos_Server
     public class ServerPlayer
     {
         public int PlayerId { get; }
+        public int SeatId { get; set; }
         public string Name { get; }
         public float LastPosX { get; set; }
         public float LastPosY { get; set; }

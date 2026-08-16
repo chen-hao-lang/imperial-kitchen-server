@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KitchenChaos_Server.Message;
 
 namespace KitchenChaos_Server
 {
@@ -117,6 +118,7 @@ namespace KitchenChaos_Server
         /// <param name="_plateId">客户端提交的盘子 ID</param>
         public void HandleDeliveryRequest(int _plateId)
         {
+            return;
             // 从服务器权威的盘子登记表中取配料数据，不信任客户端上报的配料
             if (!server.TryGetPlateIngredients(_plateId, out List<int> plateIngredients))
             {
