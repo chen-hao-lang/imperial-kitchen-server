@@ -150,10 +150,10 @@ namespace KitchenChaos_Server
                     roomManager.LeaveRoom(_client);
                     break;
                 case MessageType.C2S_DestroyRoom:
-                    HandleDestryoRoom(_data);
+                    HandleDestryoRoom(_client,_data);
                     break;
                 case MessageType.C2S_RequestRoomList:
-                    _client.Send(NetworkMessage.Create_RoomList(roomManager.GetRoomList()));
+                    _client.Send(NetworkMessage.Create_RequestRoomList(roomManager.GetRoomList()));
                     break;
                 case MessageType.C2S_Disconnect:
                     _client.Disconnect();
@@ -198,10 +198,10 @@ namespace KitchenChaos_Server
             }
         }
 
-        private void HandleDestryoRoom(byte[] _data)
+        private void HandleDestryoRoom(ServerClient _client,byte[] _data)
         {
             var roomId = NetworkMessage.Parse_DestroyRoom(_data);
-            roomManager.RemoveRoom(roomId);
+            roomManager.RemoveRoom(_client,roomId);
         }
     }
 }

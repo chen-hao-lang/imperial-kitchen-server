@@ -13,7 +13,6 @@ namespace KitchenChaos_Server.Room
         public string RoomName { get; private set; }
         public int MaxPlayer { get; private set; }
         public int OwnPlayerId { get; private set; }
-        public bool IsStartGame { get; private set; }
         public ERoomState roomState { get; private set; }
 
         public List<ServerClient> clients;
@@ -120,6 +119,11 @@ namespace KitchenChaos_Server.Room
                 Console.WriteLine($"[ServerRoom] 房间：{RoomId} 不存在客户端{_client}");
                 return false;
             }
+        }
+
+        public void SetRoomState(ERoomState _state)
+        {
+            roomState = _state;
         }
 
         public void BroadcastAll(byte[] _data)

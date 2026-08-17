@@ -45,7 +45,8 @@ namespace KitchenChaos_Server.Room
                 {
                     // 向客户端发送房间创建的消息
                     _owner.Send(NetworkMessage.Create_RoomCreated(roomId, _roomName, _maxPlayers));
-                    //_owner.Send(NetworkMessage.Create_RoomJoined(roomId,seadId));
+                    // 房主直接加入房间
+                    _owner.Send(NetworkMessage.Create_RoomJoined(roomId,seadId));
                 }
             }
             else 
@@ -71,11 +72,11 @@ namespace KitchenChaos_Server.Room
                     {
                         if (!room.IsFull)
                         {
-                            if (!room.IsStartGame)
+                            if (room.roomState == ERoomState.WaitingForPlayers)
                             {
                                 int seadId = room.AddClient(_client);
                                 // 给客户端发送加入成功的消息，让客户端进入房间
-                                _client.Send(NetworkMessage.Create_RoomJoined(_roomId, seadId, _client.Player.PlayerId, _client.Player.Name));
+                                _client.Send(NetworkMessage.Create_RoomJoined(_roomId, seadId));
                                 // 给客户端发送当前加入房间的玩家，方便客户端更新玩家模型
                                 room.BroadcastAll(NetworkMessage.Create_RoomPlayerListSync(room.GetRoomsPlayer(), room.GetRoomsPlayerName()));
                                 return true;
@@ -121,30 +122,37 @@ namespace KitchenChaos_Server.Room
 
             bool roomIsEmpty = room.RemoveClient(_client);
             if (roomIsEmpty)
-                RemoveRoom(room.RoomId);
+                RemoveRoom(_client,room.RoomId);
         }
 
         /// <summary>
         /// 移除房间
         /// </summary>
         /// <param name="_roomId">要移除的房间ID</param>
-        public void RemoveRoom(int _roomId)
+        public void RemoveRoom(ServerClient _client,int _roomId)
         {
-            if (rooms.ContainsKey(_roomId))
+            // 只有房主才可以移除房间
+            if (rooms.ContainsKey(_roomId) && _client.Player.PlayerId == rooms[_roomId].OwnPlayerId)
             {
-                rooms[_roomId].Stop();
                 rooms[_roomId].BroadcastAll(NetworkMessage.Create_RoomDestroyed(_roomId));
+                rooms[_roomId].Stop();
 
                 rooms.Remove(_roomId);
             }
         }
 
+        /// <summary>
+        /// 移除所有房间
+        /// </summary>
         public void RemoveAllRoom()
         {
             foreach (var roomId in rooms.Keys.ToList())
             {
-                RemoveRoom(roomId);
+                rooms[roomId].Stop();
+                rooms.Remove(roomId);
             }
+
+            rooms.Clear(); 
         }
 
         public void OnClientDisconnected(ServerClient _client)

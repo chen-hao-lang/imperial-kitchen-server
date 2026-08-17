@@ -649,21 +649,18 @@ namespace KitchenChaos_Server.Message
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
             writer.Write(_roomId);
-            writer.Write(_nams);
             WriteString(writer,_nams);
             writer.Write(_maxPlayer);   
             return Pack(MessageType.RoomCreated,ms.ToArray());
         }
 
-        public static byte[] Create_RoomJoined(int _roomId, int _seadId, int _playerId,string _playerNames)
+        public static byte[] Create_RoomJoined(int _roomId, int _seadId)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);  
 
             writer.Write(_roomId);
             writer.Write(_seadId);
-            writer.Write(_playerId);
-            WriteString(writer,_playerNames);
 
             return Pack(MessageType.RoomJoined,ms.ToArray());
         }
@@ -709,7 +706,7 @@ namespace KitchenChaos_Server.Message
         /// </summary>
         /// <param name="_roomList"></param>
         /// <returns></returns>
-        public static byte[] Create_RoomList(List<(int,string,int,int)> _roomList)
+        public static byte[] Create_RequestRoomList(List<(int,string,int,int)> _roomList)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
@@ -730,13 +727,13 @@ namespace KitchenChaos_Server.Message
             var ms = new MemoryStream(_data);
             var reader = new BinaryReader(ms);
             int maxPlayers = reader.ReadInt32();
-            string name = reader.ReadString();
+            string name = ReadString(reader);
             return (maxPlayers,name);
         }
 
         public static int Parse_JoinRoom(byte[] _data)
         {
-            var ms = new MemoryStream();
+            var ms = new MemoryStream(_data);
             var reader = new BinaryReader(ms);
             return reader.ReadInt32();
         }
