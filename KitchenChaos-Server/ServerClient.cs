@@ -16,7 +16,7 @@ namespace KitchenChaos_Server
 
         private readonly TcpClient tcpClient;
         private readonly GameServer server;
-        private NetworkStream stream;
+        private readonly NetworkStream stream;
         private bool isConnected;
 
         /// <summary>

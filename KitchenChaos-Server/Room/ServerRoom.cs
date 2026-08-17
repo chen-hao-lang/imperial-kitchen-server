@@ -1,7 +1,7 @@
 ﻿using KitchenChaos_Server.Counter;
+using KitchenChaos_Server.Message;
 using System;
 using System.Collections.Generic;
-using KitchenChaos_Server.Message;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -13,6 +13,8 @@ namespace KitchenChaos_Server.Room
         public string RoomName { get; private set; }
         public int MaxPlayer { get; private set; }
         public int OwnPlayerId { get; private set; }
+        public bool IsStartGame { get; private set; }
+
         public List<ServerClient> clients;
 
         public Dictionary<int,ServerPlayer> players;
@@ -86,7 +88,7 @@ namespace KitchenChaos_Server.Room
             return -1;
         }
 
-        public void RemoveClient(ServerClient _client)
+        public bool RemoveClient(ServerClient _client)
         {
             if (clients.Contains(_client))
             {
@@ -107,14 +109,17 @@ namespace KitchenChaos_Server.Room
                     currentPlayersName.Add(player.Name);
                 }
                 BroadcastExcept(_client, NetworkMessage.Create_RoomPlayerListSync(currentPlayerIds, currentPlayersName));
+
+                return clients.Count == 0;
             }
             else
             {
                 Console.WriteLine($"[ServerRoom] 房间：{RoomId} 不存在客户端{_client}");
+                return false;
             }
         }
 
-        private void BroadcastAll(byte[] _data)
+        public void BroadcastAll(byte[] _data)
         {
             foreach (var client in clients)
             {
@@ -122,7 +127,7 @@ namespace KitchenChaos_Server.Room
             }
         }
 
-        private void BroadcastExcept(ServerClient _client, byte[] _data)
+        public void BroadcastExcept(ServerClient _client, byte[] _data)
         {
             foreach (var client in clients)
             {
@@ -131,6 +136,16 @@ namespace KitchenChaos_Server.Room
                     client.Send(_data);
                 }
             }
+        }
+
+        public void Stop()
+        {
+            counterCts?.Cancel();
+
+            clients.Clear();
+            players.Clear();
+            counters.Clear();
+            plates.Clear();
         }
 
         /// <summary>
@@ -744,6 +759,28 @@ namespace KitchenChaos_Server.Room
 
             _ingredients = null;
             return false;
+        }
+
+        public List<int> GetRoomsPlayer()
+        {
+            List<int> list = new List<int>();
+
+            foreach (var player in players.Values)
+            {
+                list.Add(player.PlayerId);
+            }
+            return list;
+        }
+
+        public List<string> GetRoomsPlayerName()
+        {
+            List<string> list = new List<string>();
+
+            foreach (var player in players.Values)
+            {
+                list.Add(player.Name);
+            }
+            return list;
         }
     }
 }

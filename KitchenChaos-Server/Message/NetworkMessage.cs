@@ -1,9 +1,10 @@
-﻿using System;
-using System.IO;
-using System.Text;
+﻿using KitchenChaos_Server.Room;
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using KitchenChaos_Server.Room;
+using System.IO;
+using System.Text;
 
 namespace KitchenChaos_Server.Message
 {
@@ -58,16 +59,11 @@ namespace KitchenChaos_Server.Message
         /// <param name="_playerId">由服务器分配的id</param>
         /// <param name="_connectedPlayers">当前已经连接的客户端的玩家id</param>
         /// <returns></returns>
-        public static byte[] Create_Connect(int _playerId, List<int> _connectedPlayersId)
+        public static byte[] Create_Connect(int _playerId)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
             writer.Write(_playerId);
-            writer.Write(_connectedPlayersId.Count);
-            foreach (var id in _connectedPlayersId)
-            {
-                writer.Write(id);   
-            }
             return Pack(MessageType.Connect, ms.ToArray());
         }
 
@@ -648,31 +644,25 @@ namespace KitchenChaos_Server.Message
         #endregion
 
         #region Room
-        public static byte[] Create_RoomCreated(int _roomId)
+        public static byte[] Create_RoomCreated(int _roomId,string _nams,int _maxPlayer)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
             writer.Write(_roomId);
+            writer.Write(_nams);
+            writer.Write(_maxPlayer);   
             return Pack(MessageType.RoomCreated,ms.ToArray());
         }
 
-        public static byte[] Create_RoomJoined(int _roomId, int[] _players, string[] _playerNames)
+        public static byte[] Create_RoomJoined(int _roomId, int _seadId, int _playerId,string _playerNames)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);  
 
             writer.Write(_roomId);
-            writer.Write(_players.Length);
-            foreach (var player in _players)
-            {
-                writer.Write(player);
-            }
-
-            writer.Write(_playerNames.Length);
-            foreach (var name in _playerNames)
-            {
-                writer.Write(name);
-            }
+            writer.Write(_seadId);
+            writer.Write(_playerId);
+            writer.Write(_playerNames);
 
             return Pack(MessageType.RoomJoined,ms.ToArray());
         }
@@ -713,9 +703,29 @@ namespace KitchenChaos_Server.Message
             return Pack(MessageType.RoomDestroyed, ms.ToArray());
         }
 
+        /// <summary>
+        /// 返回当前的服务器拥有的房间列表
+        /// </summary>
+        /// <param name="_roomList"></param>
+        /// <returns></returns>
+        public static byte[] Create_RoomList(List<(int,string,int,int)> _roomList)
+        {
+            var ms = new MemoryStream();
+            var writer = new BinaryWriter(ms);
+            writer.Write(_roomList.Count);
+            foreach (var room in _roomList)
+            {
+                writer.Write(room.Item1);
+                writer.Write(room.Item2);
+                writer.Write(room.Item3);
+                writer.Write(room.Item4);
+            }
+            return Pack(MessageType.RoomList,ms.ToArray());
+        }
+
         #region 解析
         //TODO:
-        public static (int,int,string) Parse_CreateRoom(byte[] _data)
+        public static (int ownerId,int maxPlayers,string roomName) Parse_CreateRoom(byte[] _data)
         {
             var ms = new MemoryStream();
             var reader = new BinaryReader(ms);
@@ -729,6 +739,14 @@ namespace KitchenChaos_Server.Message
         public static int Parse_JoinRoom(byte[] _data)
         {
             return -1;
+        }
+
+        public static int Parse_DestroyRoom(byte[] _date)
+        {
+            var ms = new MemoryStream();
+            var reader = new BinaryReader(ms);
+            int roomId = reader.ReadInt32();
+            return roomId;
         }
         #endregion
         #endregion
