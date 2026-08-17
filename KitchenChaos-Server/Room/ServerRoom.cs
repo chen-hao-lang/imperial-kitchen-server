@@ -14,6 +14,7 @@ namespace KitchenChaos_Server.Room
         public int MaxPlayer { get; private set; }
         public int OwnPlayerId { get; private set; }
         public bool IsStartGame { get; private set; }
+        public ERoomState roomState { get; private set; }
 
         public List<ServerClient> clients;
 
@@ -28,7 +29,7 @@ namespace KitchenChaos_Server.Room
         public bool IsFull => players.Count >= MaxPlayer;
 
         private ServerGameManager gameManager;
-        private ServerDeliveryManager deliveryManager;
+        public ServerDeliveryManager DeliveryManager { get; private set; }
 
         /// <summary>
         /// 操作台更新间隔（秒），约 20 次/秒
@@ -39,8 +40,9 @@ namespace KitchenChaos_Server.Room
         /// 操作台更新用的 CancellationTokenSource
         /// </summary>
         private CancellationTokenSource counterCts;
+        private CancellationTokenSource gameCts;
 
-        public ServerRoom(int _id, string _name, int _maxPlayer, int _ownerPlayerId, GameServer _server)
+        public ServerRoom(int _id, string _name, int _maxPlayer, int _ownerPlayerId)
         {
             RoomId = _id;
             RoomName = _name;
@@ -52,8 +54,9 @@ namespace KitchenChaos_Server.Room
             counters = new Dictionary<int, BaseCounter>();
             plates = new Dictionary<int, ServerPlate>();
 
-            gameManager = new ServerGameManager(_server);
-            deliveryManager = new ServerDeliveryManager(_server);
+            gameCts = new CancellationTokenSource();
+            gameManager = new ServerGameManager(this, gameCts.Token);
+            DeliveryManager = new ServerDeliveryManager(this);
 
             counterCts = new CancellationTokenSource();
             _ = CounterUpdateLoopAsync(counterCts.Token);
@@ -72,7 +75,7 @@ namespace KitchenChaos_Server.Room
                 clients.Add(_client);
 
                 _client.CurrentRoom = this;
-                int seatId = players.Count;
+                int seatId = players.Count;// 给客户端的玩家分配座位id
                 _client.Player.SeatId = seatId;
                 players.Add(_client.Player.PlayerId,_client.Player);
 
@@ -141,7 +144,12 @@ namespace KitchenChaos_Server.Room
         public void Stop()
         {
             counterCts?.Cancel();
+            gameCts?.Cancel();
 
+            foreach (var client in clients)
+            {
+                client.CurrentRoom = null;
+            }
             clients.Clear();
             players.Clear();
             counters.Clear();
@@ -188,7 +196,7 @@ namespace KitchenChaos_Server.Room
             }
 
             // 服务器权威订单生成（仅游戏进行中）
-            deliveryManager?.Update(_deltaTime);
+            DeliveryManager?.Update(_deltaTime);
 
             foreach (var counter in counters.Values)
             {
@@ -281,7 +289,7 @@ namespace KitchenChaos_Server.Room
             }
 
             // 收集等待中的订单（服务器权威，中途加入的玩家恢复订单状态）
-            int[] recipeIndexes = deliveryManager?.GetWaitingRecipeIndexes() ?? new int[0];
+            int[] recipeIndexes = DeliveryManager?.GetWaitingRecipeIndexes() ?? new int[0];
 
             _targetClient.Send(NetworkMessage.Create_FullSync(
                 playersList.ToArray(),
@@ -293,7 +301,7 @@ namespace KitchenChaos_Server.Room
         /// <summary>
         /// 处理来自客户端的消息
         /// </summary>
-        private void HandleGameMessage(ServerClient _sender, MessageType _type, byte[] _date)
+        public void HandleGameMessage(ServerClient _sender, MessageType _type, byte[] _date)
         {
             switch (_type)
             {
@@ -437,7 +445,11 @@ namespace KitchenChaos_Server.Room
         {
             var (counterId, ingredientId) = NetworkMessage.Parse_CounterAddIngredient(_data);
 
-            if(counters.TryGetValue(counterId,out BaseCounter counter))
+            if (!counters.TryGetValue(counterId, out BaseCounter counter))
+            {
+                Console.WriteLine($"未知操作台: {counterId}");
+                return;
+            }
 
             if (counter.Type == CounterType.PlateCounter && counter is PlateCounter plateCounter)
             {
@@ -688,7 +700,7 @@ namespace KitchenChaos_Server.Room
         {
             int plateId = NetworkMessage.Parse_DeliveryRequest(_data);
             Console.WriteLine($"[GameServer] 玩家{_sender.Player.PlayerId} 提交交付请求: 盘子 {plateId}");
-            deliveryManager?.HandleDeliveryRequest(plateId);
+            DeliveryManager?.HandleDeliveryRequest(plateId);
         }
 
         /// <summary>

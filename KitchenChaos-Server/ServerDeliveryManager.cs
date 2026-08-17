@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KitchenChaos_Server.Message;
+using KitchenChaos_Server.Room;
 
 namespace KitchenChaos_Server
 {
@@ -13,7 +14,7 @@ namespace KitchenChaos_Server
     /// </summary>
     public class ServerDeliveryManager
     {
-        private readonly GameServer server;
+        private ServerRoom room;
         private readonly object stateLock = new object();
 
         /// <summary>当前等待交付的配方索引列表（服务器权威）</summary>
@@ -26,9 +27,9 @@ namespace KitchenChaos_Server
         private const float SPAWN_RECIPE_INTERVAL = 4f;
         private const int MAX_WAITING_RECIPES = 4;
 
-        public ServerDeliveryManager(GameServer _server)
+        public ServerDeliveryManager(ServerRoom _room)
         {
-            server = _server;
+            room = _room;
         }
 
         /// <summary>当前等待中的配方索引（线程安全快照，用于 FullSync）</summary>
@@ -105,7 +106,7 @@ namespace KitchenChaos_Server
                 waitingRecipeIndexes.Add(recipeIndex);
             }
 
-            server.BroadcastAll(NetworkMessage.Create_RecipeSpawned(recipeIndex));
+            room.BroadcastAll(NetworkMessage.Create_RecipeSpawned(recipeIndex));
             Console.WriteLine($"[ServerDeliveryManager] 新订单: 配方{recipeIndex}({RecipeRegistry.GetName(recipeIndex)}), 当前等待={waitingRecipeIndexes.Count}/{MAX_WAITING_RECIPES}");
         }
 
@@ -118,12 +119,11 @@ namespace KitchenChaos_Server
         /// <param name="_plateId">客户端提交的盘子 ID</param>
         public void HandleDeliveryRequest(int _plateId)
         {
-            return;
             // 从服务器权威的盘子登记表中取配料数据，不信任客户端上报的配料
-            if (!server.TryGetPlateIngredients(_plateId, out List<int> plateIngredients))
+            if (!room.TryGetPlateIngredients(_plateId, out List<int> plateIngredients))
             {
                 Console.WriteLine($"[ServerDeliveryManager] 交付失败: 服务器中不存在盘子 {_plateId}");
-                server.BroadcastAll(NetworkMessage.Create_RecipeFailed());
+                room.BroadcastAll(NetworkMessage.Create_RecipeFailed());
                 return;
             }
 
@@ -144,8 +144,8 @@ namespace KitchenChaos_Server
                         matched = true;
 
                         // 广播订单完成 + 分数
-                        server.BroadcastAll(NetworkMessage.Create_RecipeCompleted(recipeIndex));
-                        server.BroadcastAll(NetworkMessage.Create_ScoreUpdate(successfulRecipesAmount));
+                        room.BroadcastAll(NetworkMessage.Create_RecipeCompleted(recipeIndex));
+                        room.BroadcastAll(NetworkMessage.Create_ScoreUpdate(successfulRecipesAmount));
 
                         Console.WriteLine($"[ServerDeliveryManager] 交付成功! 配方{recipeIndex}({RecipeRegistry.GetName(recipeIndex)}), 累计={successfulRecipesAmount}, 剩余订单={waitingRecipeIndexes.Count}");
                         break;
@@ -154,11 +154,11 @@ namespace KitchenChaos_Server
             }
 
             // DeliveryCounter 一定会消费盘子：无论成功失败都销毁
-            server.DestroyPlate(_plateId);
+            room.DestroyPlate(_plateId);
 
             if (!matched)
             {
-                server.BroadcastAll(NetworkMessage.Create_RecipeFailed());
+                room.BroadcastAll(NetworkMessage.Create_RecipeFailed());
                 Console.WriteLine($"[ServerDeliveryManager] 交付失败: 盘子{_plateId} 无匹配订单");
             }
         }

@@ -65,14 +65,13 @@
         RoomJoinFailed = 32,       // 加入房间失败（附带原因码）
         RoomPlayerListSync = 33,       // 房间玩家列表更新
         RoomDestroyed = 34,        // 房间被解散
-        RoomList = 35,// 请求房间列表
+        RequestRoomList = 35,// 请求房间列表
 
         // 房间相关 (上行: 120-129)
         C2S_CreateRoom = 120,      // 创建房间（附带最大玩家数）
         C2S_JoinRoom = 121,        // 加入房间（附带房间号）
         C2S_LeaveRoom = 122,       // 离开房间
         C2S_DestroyRoom = 123,     // 房主解散房间
-        C2S_StartGame = 124,       // 房主开始游戏
         C2S_RequestRoomList  =125,// 请求房间列表
         #endregion
     }

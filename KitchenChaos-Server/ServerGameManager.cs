@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using KitchenChaos_Server.Message;
+using KitchenChaos_Server.Room;
 
 namespace KitchenChaos_Server
 {
@@ -19,10 +21,10 @@ namespace KitchenChaos_Server
     /// </summary>
     public class ServerGameManager
     {
+        private ServerRoom room;
         public EGameState State { get; private set; } = EGameState.WaitingForPlayers;
         public float RemainingTime { get; private set; }
 
-        private readonly GameServer server;
         private readonly HashSet<int> readyPlayers = new HashSet<int>();
         private int totalPlayers;
         private bool isRunning;
@@ -30,9 +32,14 @@ namespace KitchenChaos_Server
         private const float CD_DURATION = 3f;
         private const float GAME_DURATION = 30f;
 
-        public ServerGameManager(GameServer _server)
+        private readonly object readyLock = new object();
+
+        private CancellationToken ct;
+
+        public ServerGameManager(ServerRoom _room,CancellationToken _ct)
         {
-            server = _server;
+            room = _room;
+            ct = _ct;
         }
 
         /// <summary>
@@ -61,15 +68,18 @@ namespace KitchenChaos_Server
         /// <param name="_playerId"></param>
         public void OnPlayerReady(int _playerId)
         {
-            if (State != EGameState.WaitingForPlayers) return;
-
-            readyPlayers.Add(_playerId);
-            Console.WriteLine($"[ServerGameManager] 玩家{_playerId} 就绪 ({readyPlayers.Count}/{totalPlayers})");
-
-            // 所有人准备就绪
-            if (readyPlayers.Count >= totalPlayers && totalPlayers >= 1)
+            lock(readyLock)
             {
-                _ = RunGameLoopAsync();
+                if (State != EGameState.WaitingForPlayers) return;
+
+                readyPlayers.Add(_playerId);
+                Console.WriteLine($"[ServerGameManager] 玩家{_playerId} 就绪 ({readyPlayers.Count}/{totalPlayers})");
+
+                // 所有人准备就绪
+                if (readyPlayers.Count >= totalPlayers && totalPlayers >= 1)
+                {
+                    _ = RunGameLoopAsync();
+                }
             }
         }
 
@@ -78,37 +88,37 @@ namespace KitchenChaos_Server
         /// </summary>
         /// <returns></returns>
         private async Task RunGameLoopAsync()
-        {
+        {                
             if (isRunning) return;
             isRunning = true;
 
             State = EGameState.CDToStart;
-            server.BroadcastAll(NetworkMessage.Create_GameStateChange((byte)EGameState.CDToStart));
+            room.BroadcastAll(NetworkMessage.Create_GameStateChange((byte)EGameState.CDToStart));
             Console.WriteLine("[ServerGameManager] 倒计时开始");
 
-            for (int i = (int)CD_DURATION; i > 0; i--)
+            for (int i = (int)CD_DURATION; i > 0 && !ct.IsCancellationRequested; i--)
             {
-                server.BroadcastAll(NetworkMessage.Create_GameStartCD(i));
+                room.BroadcastAll(NetworkMessage.Create_GameStartCD(i));
                 Console.WriteLine($"[ServerGameManager] 开局倒计时: {i}");
-                await Task.Delay(1000);
+                await Task.Delay(1000,ct);
             }
 
             State = EGameState.GamePlaying;
             // 新一局：重置订单与分数，并立即生成第一单
-            server.StartNewGame();
-            server.BroadcastAll(NetworkMessage.Create_GameStateChange((byte)EGameState.GamePlaying));
+            room.DeliveryManager.StartNewGame();
+            room.BroadcastAll(NetworkMessage.Create_GameStateChange((byte)EGameState.GamePlaying));
             Console.WriteLine("[ServerGameManager] 游戏开始");
 
             RemainingTime = GAME_DURATION;
-            while (RemainingTime > 0)
+            while (RemainingTime > 0 && !ct.IsCancellationRequested)
             {
-                server.BroadcastAll(NetworkMessage.Create_TimerSync(RemainingTime));
-                await Task.Delay(1000);
+                room.BroadcastAll(NetworkMessage.Create_TimerSync(RemainingTime));
+                await Task.Delay(1000,ct);
                 RemainingTime -= 1f;
             }
 
             State = EGameState.GameOver;
-            server.BroadcastAll(NetworkMessage.Create_GameStateChange((byte)EGameState.GameOver));
+            room.BroadcastAll(NetworkMessage.Create_GameStateChange((byte)EGameState.GameOver));
             Console.WriteLine("[ServerGameManager] 游戏结束");
         }
     }

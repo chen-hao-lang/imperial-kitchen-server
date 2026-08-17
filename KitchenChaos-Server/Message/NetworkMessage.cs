@@ -650,6 +650,7 @@ namespace KitchenChaos_Server.Message
             var writer = new BinaryWriter(ms);
             writer.Write(_roomId);
             writer.Write(_nams);
+            WriteString(writer,_nams);
             writer.Write(_maxPlayer);   
             return Pack(MessageType.RoomCreated,ms.ToArray());
         }
@@ -662,7 +663,7 @@ namespace KitchenChaos_Server.Message
             writer.Write(_roomId);
             writer.Write(_seadId);
             writer.Write(_playerId);
-            writer.Write(_playerNames);
+            WriteString(writer,_playerNames);
 
             return Pack(MessageType.RoomJoined,ms.ToArray());
         }
@@ -689,7 +690,7 @@ namespace KitchenChaos_Server.Message
             writer.Write(_names.Count);
             foreach (var name in _names)
             {
-                writer.Write(name);
+                WriteString(writer,name);
             }
 
             return Pack(MessageType.RoomPlayerListSync, ms.ToArray());
@@ -716,34 +717,33 @@ namespace KitchenChaos_Server.Message
             foreach (var room in _roomList)
             {
                 writer.Write(room.Item1);
-                writer.Write(room.Item2);
+                WriteString(writer,room.Item2);
                 writer.Write(room.Item3);
                 writer.Write(room.Item4);
             }
-            return Pack(MessageType.RoomList,ms.ToArray());
+            return Pack(MessageType.RequestRoomList,ms.ToArray());
         }
 
         #region 解析
-        //TODO:
-        public static (int ownerId,int maxPlayers,string roomName) Parse_CreateRoom(byte[] _data)
+        public static (int maxPlayers,string roomName) Parse_CreateRoom(byte[] _data)
+        {
+            var ms = new MemoryStream(_data);
+            var reader = new BinaryReader(ms);
+            int maxPlayers = reader.ReadInt32();
+            string name = reader.ReadString();
+            return (maxPlayers,name);
+        }
+
+        public static int Parse_JoinRoom(byte[] _data)
         {
             var ms = new MemoryStream();
             var reader = new BinaryReader(ms);
-            int ownerId = reader.ReadInt32();
-            int maxPlayers = reader.ReadInt32();
-            string name = reader.ReadString();
-            return (ownerId,maxPlayers,name);
-        }
-
-        //TODO:
-        public static int Parse_JoinRoom(byte[] _data)
-        {
-            return -1;
+            return reader.ReadInt32();
         }
 
         public static int Parse_DestroyRoom(byte[] _date)
         {
-            var ms = new MemoryStream();
+            var ms = new MemoryStream(_date);
             var reader = new BinaryReader(ms);
             int roomId = reader.ReadInt32();
             return roomId;

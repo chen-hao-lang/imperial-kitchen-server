@@ -159,17 +159,36 @@ namespace KitchenChaos_Server
                     _client.Disconnect();
                     break;
                 default:
+                    var room = _client.CurrentRoom;
+                    if (room == null)
+                    {
+                        Console.WriteLine("该玩家并未加入房间，忽略该消息");
+                    }
+                    else
+                    {
+                        room.HandleGameMessage(_client,_type,_data);
+                    }
                     Console.WriteLine($"[GameServer] 未处理的消息类型: {_type}");
                     break;
             }
         }
 
+        /// <summary>
+        /// 处理来自客户端上传的房间创建逻辑
+        /// </summary>
+        /// <param name="_client">客户端</param>
+        /// <param name="_data">房间参数</param>
         private void HandleCreateRoom(ServerClient _client,byte[] _data)
         {
-            var (ownerId, maxPlayers,name) = NetworkMessage.Parse_CreateRoom(_data);
-            roomManager.CreateRoom(_client,name,maxPlayers,this);
+            var (maxPlayers,name) = NetworkMessage.Parse_CreateRoom(_data);// 解析客户端上传的房间参数：最多游玩玩家，房间名字
+            roomManager.CreateRoom(_client,name,maxPlayers);// 创建房间
         }
 
+        /// <summary>
+        /// 处理来自客户端加入房间的逻辑
+        /// </summary>
+        /// <param name="_client">客户端</param>
+        /// <param name="_data">房间ID</param>
         private void HandleJoinRoom(ServerClient _client, byte[] _data)
         {
             var roomId = NetworkMessage.Parse_JoinRoom(_data);
