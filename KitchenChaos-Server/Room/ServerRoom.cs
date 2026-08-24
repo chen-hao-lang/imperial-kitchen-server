@@ -2,6 +2,8 @@
 using KitchenChaos_Server.Message;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -13,7 +15,7 @@ namespace KitchenChaos_Server.Room
         public string RoomName { get; private set; }
         public int MaxPlayer { get; private set; }
         public int OwnPlayerId { get; private set; }
-        public ERoomState roomState { get; private set; }
+        public ERoomState roomState { get; private set; } = ERoomState.WaitingForPlayers;
 
         public List<ServerClient> clients;
 
@@ -25,10 +27,25 @@ namespace KitchenChaos_Server.Room
         private int nextPlateId;
         public Dictionary<int,ServerPlate> plates;
 
-        public bool IsFull => players.Count >= MaxPlayer;
+        public bool IsFull
+        {
+            get
+            {
+                lock (stateLock)
+                {
+                    return players.Count >= MaxPlayer;
+                }
+            }
+        }
 
         private ServerGameManager gameManager;
         public ServerDeliveryManager DeliveryManager { get; private set; }
+
+        /// <summary>
+        /// 房间级状态锁：串行化所有对共享状态（clients/players/counters/plates）的访问。
+        /// 锁顺序约定：先取 room 锁，再取 DeliveryManager 锁；严禁在 DeliveryManager 锁内调用 room 方法（避免死锁）。
+        /// </summary>
+        private readonly object stateLock = new object();
 
         /// <summary>
         /// 操作台更新间隔（秒），约 20 次/秒
@@ -58,77 +75,95 @@ namespace KitchenChaos_Server.Room
             DeliveryManager = new ServerDeliveryManager(this);
 
             counterCts = new CancellationTokenSource();
-            _ = CounterUpdateLoopAsync(counterCts.Token);
+            //_ = CounterUpdateLoopAsync(counterCts.Token);
         }
 
         public int AddClient(ServerClient _client)
         {
-            if (_client.CurrentRoom == this)
+            lock (stateLock)
             {
-                Console.WriteLine($"[ServerRoom] 房间：{RoomId} 已经 连接了客户端{_client}");
+                if (_client.CurrentRoom == this)
+                {
+                    Console.WriteLine($"[ServerRoom] 房间：{RoomId} 已经 连接了客户端{_client}");
+                    return -1;
+                }
+
+                if (!clients.Contains(_client))
+                {
+                    clients.Add(_client);
+
+                    _client.CurrentRoom = this;
+                    int seatId = players.Count;// 给客户端的玩家分配座位id
+                    _client.Player.SeatId = seatId;
+                    players.Add(_client.Player.PlayerId,_client.Player);
+
+                    //gameManager.OnPlayerConnected(_client.Player.PlayerId);
+
+                    return seatId;
+                }
+                else
+                {
+                    Console.WriteLine($"[ServerRoom] 房间：{RoomId} 已经 连接了客户端{_client}");
+                }
+
                 return -1;
             }
-
-            if (!clients.Contains(_client))
-            {
-                clients.Add(_client);
-
-                _client.CurrentRoom = this;
-                int seatId = players.Count;// 给客户端的玩家分配座位id
-                _client.Player.SeatId = seatId;
-                players.Add(_client.Player.PlayerId,_client.Player);
-
-                gameManager.OnPlayerConnected(_client.Player.PlayerId);
-
-                return seatId;
-            }
-            else
-            {
-                Console.WriteLine($"[ServerRoom] 房间：{RoomId} 已经 连接了客户端{_client}");
-            }
-
-            return -1;
         }
 
         public bool RemoveClient(ServerClient _client)
         {
-            if (clients.Contains(_client))
+            lock (stateLock)
             {
-                clients.Remove(_client);
-
-                players.Remove(_client.Player.PlayerId);
-                gameManager.OnPlayerLefted(_client.Player.PlayerId);
-                _client.CurrentRoom = null;
-
-                //TODO:房主转移
-
-                //广播给其他客户端进行更新
-                List<int> currentPlayerIds = new List<int>();
-                List<string> currentPlayersName = new List<string>();
-                foreach (var player in players.Values)
+                if (clients.Contains(_client))
                 {
-                    currentPlayerIds.Add(player.PlayerId);
-                    currentPlayersName.Add(player.Name);
-                }
-                BroadcastExcept(_client, NetworkMessage.Create_RoomPlayerListSync(currentPlayerIds, currentPlayersName));
+                    clients.Remove(_client);
 
-                return clients.Count == 0;
-            }
-            else
-            {
-                Console.WriteLine($"[ServerRoom] 房间：{RoomId} 不存在客户端{_client}");
-                return false;
+                    players.Remove(_client.Player.PlayerId);
+                    //gameManager.OnPlayerLefted(_client.Player.PlayerId);
+                    _client.CurrentRoom = null;
+
+                    //TODO:房主转移
+
+                    //广播给其他客户端进行更新
+                    List<int> seadIds = new List<int>();
+                    List<int> currentPlayerIds = new List<int>();
+                    List<string> currentPlayersName = new List<string>();
+                    foreach (var player in players.Values)
+                    {
+                        seadIds.Add(player.SeatId);
+                        currentPlayerIds.Add(player.PlayerId);
+                        currentPlayersName.Add(player.Name);
+                    }
+                    BroadcastExcept(_client, NetworkMessage.Create_RoomPlayerListSync(GetRoomPlayerInfo()));
+
+                    return clients.Count == 0;
+                }
+                else
+                {
+                    Console.WriteLine($"[ServerRoom] 房间：{RoomId} 不存在客户端{_client}");
+                    return false;
+                }
             }
         }
 
         public void SetRoomState(ERoomState _state)
         {
-            roomState = _state;
+            lock (stateLock)
+            {
+                roomState = _state;
+            }
         }
 
         public void BroadcastAll(byte[] _data)
         {
-            foreach (var client in clients)
+            // 锁内快照客户端列表，锁外发送：避免持有锁时阻塞在网络写入上
+            List<ServerClient> snapshot;
+            lock (stateLock)
+            {
+                snapshot = new List<ServerClient>(clients);
+            }
+
+            foreach (var client in snapshot)
             {
                 client.Send(_data);
             }
@@ -136,7 +171,14 @@ namespace KitchenChaos_Server.Room
 
         public void BroadcastExcept(ServerClient _client, byte[] _data)
         {
-            foreach (var client in clients)
+            // 锁内快照客户端列表，锁外发送
+            List<ServerClient> snapshot;
+            lock (stateLock)
+            {
+                snapshot = new List<ServerClient>(clients);
+            }
+
+            foreach (var client in snapshot)
             {
                 if (client != _client)
                 {
@@ -145,19 +187,31 @@ namespace KitchenChaos_Server.Room
             }
         }
 
+        public void StartGame()
+        {
+            // 先广播权威的玩家列表（含座位号），保证所有客户端进入游戏场景时
+            // NetworkManager.RoomPlayers 是完整且新鲜的（房主此前从未收到过 RoomPlayerListSync）。
+            BroadcastAll(NetworkMessage.Create_RoomPlayerListSync(GetRoomPlayerInfo()));
+            // 再广播开始游戏，客户端收到后切换到 GameScene
+            BroadcastAll(NetworkMessage.Create_StartGame(RoomId));
+        }
+
         public void Stop()
         {
-            counterCts?.Cancel();
-            gameCts?.Cancel();
-
-            foreach (var client in clients)
+            lock (stateLock)
             {
-                client.CurrentRoom = null;
+                counterCts?.Cancel();
+                gameCts?.Cancel();
+
+                foreach (var client in clients)
+                {
+                    client.CurrentRoom = null;
+                }
+                clients.Clear();
+                players.Clear();
+                counters.Clear();
+                plates.Clear();
             }
-            clients.Clear();
-            players.Clear();
-            counters.Clear();
-            plates.Clear();
         }
 
         /// <summary>
@@ -173,7 +227,10 @@ namespace KitchenChaos_Server.Room
                 try
                 {
                     float deltaTime = COUNTER_TICK_INTERVAL;
-                    UpdateCounters(deltaTime);
+                    lock (stateLock)
+                    {
+                        UpdateCounters(deltaTime);
+                    }
                     await Task.Delay((int)(COUNTER_TICK_INTERVAL * 1000), _ct);
                 }
                 catch (TaskCanceledException)
@@ -266,96 +323,110 @@ namespace KitchenChaos_Server.Room
         /// </summary>
         private void SendFullSyncToClient(ServerClient _targetClient)
         {
-            var playersList = new List<(int id, string name, float x, float y, float z, float rotY)>();
-            foreach (var c in clients)
+            lock (stateLock)
             {
-                if (c != _targetClient)
+                var playersList = new List<(int id, string name, float x, float y, float z, float rotY)>();
+                foreach (var c in clients)
                 {
-                    playersList.Add((c.Player.PlayerId, $"玩家{c.Player.PlayerId}", c.Player.LastPosX, c.Player.LastPosY, c.Player.LastPosZ, c.Player.LastRotY));
+                    if (c != _targetClient)
+                    {
+                        playersList.Add((c.Player.PlayerId, $"玩家{c.Player.PlayerId}", c.Player.LastPosX, c.Player.LastPosY, c.Player.LastPosZ, c.Player.LastRotY));
+                    }
                 }
+
+                var countersList = new (int counterId, int itemIndex)[this.counters.Count];
+                int i = 0;
+                foreach (var kv in this.counters.Values)
+                {
+                    countersList[i] = (kv.CounterId, kv.ItemIndex);
+                    i++;
+                }
+
+                // 收集所有盘子
+                var platesList = new (int plateId, byte ownerType, int ownerId, int soIndex, List<int> ingredients)[plates.Count];
+                int j = 0;
+                foreach (var kv in plates.Values)
+                {
+                    platesList[j] = (kv.PlateId, kv.OwnerType, kv.OwnerId, kv.SoIndex, kv.Ingredients);
+                    j++;
+                }
+
+                // 收集等待中的订单（服务器权威，中途加入的玩家恢复订单状态）
+                int[] recipeIndexes = DeliveryManager?.GetWaitingRecipeIndexes() ?? new int[0];
+
+                _targetClient.Send(NetworkMessage.Create_FullSync(
+                    playersList.ToArray(),
+                    countersList,
+                    platesList,
+                    recipeIndexes));
             }
-
-            var countersList = new (int counterId, int itemIndex)[this.counters.Count];
-            int i = 0;
-            foreach (var kv in this.counters.Values)
-            {
-                countersList[i] = (kv.CounterId, kv.ItemIndex);
-                i++;
-            }
-
-            // 收集所有盘子
-            var platesList = new (int plateId, byte ownerType, int ownerId, int soIndex, List<int> ingredients)[plates.Count];
-            int j = 0;
-            foreach (var kv in plates.Values)
-            {
-                platesList[j] = (kv.PlateId, kv.OwnerType, kv.OwnerId, kv.SoIndex, kv.Ingredients);
-                j++;
-            }
-
-            // 收集等待中的订单（服务器权威，中途加入的玩家恢复订单状态）
-            int[] recipeIndexes = DeliveryManager?.GetWaitingRecipeIndexes() ?? new int[0];
-
-            _targetClient.Send(NetworkMessage.Create_FullSync(
-                playersList.ToArray(),
-                countersList,
-                platesList,
-                recipeIndexes));
         }
 
         /// <summary>
-        /// 处理来自客户端的消息
+        /// 处理来自客户端的消息（入口加房间锁，串行化本房间所有消息处理）。
         /// </summary>
         public void HandleGameMessage(ServerClient _sender, MessageType _type, byte[] _date)
         {
+            lock (stateLock)
+            {
+                ProcessGameMessage(_sender, _type, _date);
+            }
+        }
+
+        /// <summary>
+        /// 实际的消息处理逻辑（调用方需持有 stateLock）。
+        /// </summary>
+        private void ProcessGameMessage(ServerClient _sender, MessageType _type, byte[] _data)
+        {
             switch (_type)
             {
-                case MessageType.C2S_PlayerReady:
-                    HandlePlayerReady(_sender, _date);
+                case MessageType.C2S_PlayerReady:// 成功，没问题
+                    HandlePlayerReady(_data);
                     break;
-                case MessageType.C2S_PlayerMove:
-                    HandlePlayerMove(_sender, _date);
+                case MessageType.C2S_PlayerMove:// 成功，没问题
+                    HandlePlayerMove(_sender, _data);
                     break;
-                case MessageType.C2S_CounterRegister:
-                    HandleCounterRegister(_sender, _date);
+                case MessageType.C2S_CounterRegister:// 成功，没问题
+                    HandleCounterRegister(_sender, _data);
                     break;
                 case MessageType.C2S_CounterAddIngredient:
-                    HandleCounterAddIngredient(_sender, _date);
+                    HandleCounterAddIngredient(_sender, _data);
                     break;
                 case MessageType.C2S_CounterStartMark:
-                    HandleCounterStartMark(_sender, _date);
+                    HandleCounterStartMark(_sender, _data);
                     break;
-                case MessageType.C2S_PlayerInteract:
-                    HandlePlayerInteract(_sender, _date);
+                case MessageType.C2S_PlayerInteract:// ?
+                    HandlePlayerInteract(_sender, _data);
                     break;
                 case MessageType.C2S_PlayerInteractAlternate:
-                    HandleInteractAlternate(_sender, _date);
+                    HandleInteractAlternate(_sender, _data);
                     break;
                 case MessageType.C2S_PlateAddIngredient:
-                    HandlePlateAddIngredient(_sender, _date);
+                    HandlePlateAddIngredient(_sender, _data);
                     break;
                 case MessageType.C2S_PlateRemoveIngredient:
-                    HandlePlateRemoveIngredient(_sender, _date);
+                    HandlePlateRemoveIngredient(_sender, _data);
                     break;
                 case MessageType.C2S_PlateOwnerSync:
-                    HandlePlateOwnerSync(_sender, _date);
+                    HandlePlateOwnerSync(_sender, _data);
                     break;
                 case MessageType.C2S_PlateDestroy:
-                    HandlePlateDestroy(_sender, _date);
+                    HandlePlateDestroy(_sender, _data);
                     break;
                 case MessageType.C2S_RemotePlate:
-                    HandleRemotePlate(_sender, _date);
+                    HandleRemotePlate(_sender, _data);
                     break;
-                case MessageType.C2S_RegisterPlateSO:
-                    HandleRegisterPlateSO(_sender, _date);
+                case MessageType.C2S_RegisterPlateSO:// ？
+                    HandleRegisterPlateSO(_sender, _data);
                     break;
                 case MessageType.C2S_DeliveryRequest:
-                    HandleDeliveryRequest(_sender, _date);
+                    HandleDeliveryRequest(_sender, _data);
                     break;
-                case MessageType.C2S_RegisterRecipes:
-                    HandleRegisterRecipes(_sender, _date);
+                case MessageType.C2S_RegisterRecipes:// 成功，没问题
+                    HandleRegisterRecipes(_sender, _data);
                     break;
                 case MessageType.C2S_SendMessage:
-                    HandleSendMessage(_sender, _date);
+                    HandleSendMessage(_sender, _data);
                     break;
                 default:
                     // 未处理的消息类型
@@ -364,29 +435,22 @@ namespace KitchenChaos_Server.Room
         }
 
         #region 消息处理
-        /// <summary>
-        /// 同步玩家主备
-        /// </summary>
-        private void HandlePlayerReady(ServerClient _sender, byte[] _data)
+
+        private void HandlePlayerReady(byte[] _data)
         {
-            var (id, isReady) = NetworkMessage.Parse_PlayerReade(_data);
-            foreach (var player in players.Values)
+            var (playerId, isRead) = NetworkMessage.Parse_PlayerReady(_data);
+            lock (stateLock)
             {
-                if (player.PlayerId == id)
+                foreach (var id in players.Keys)
                 {
-                    player.IsReady = isReady;
-                    // 广播玩家准备状态给所有客户端
-                    BroadcastAll(NetworkMessage.Create_PlayerReady(id, isReady ? 1 : 0));
-                    Console.WriteLine($"[GameServer] 玩家{id} 准备状态: {isReady}");
-                    if (isReady)
+                    if (id == playerId)
                     {
-                        gameManager.OnPlayerReady(_sender.Player.PlayerId);
+                        players[playerId].IsReady = isRead;
+                        BroadcastAll(NetworkMessage.Create_PlayerReady(playerId, isRead));
                     }
-                    return;
                 }
             }
         }
-        
         /// <summary>
         /// 同步玩家移动
         /// </summary>
@@ -440,6 +504,9 @@ namespace KitchenChaos_Server.Room
 
             countersInitialized = true;
             Console.WriteLine($"[GameServer] 操作台类型映射初始化完成，共 {counters.Count} 个");
+
+            // 开始同步操作台的状态
+            _ = CounterUpdateLoopAsync(counterCts.Token);
         }
 
         /// <summary>
@@ -447,21 +514,24 @@ namespace KitchenChaos_Server.Room
         /// </summary>
         private void HandleCounterAddIngredient(ServerClient _sender, byte[] _data) 
         {
+            // 解析出哪个操作台添加了什么物品
             var (counterId, ingredientId) = NetworkMessage.Parse_CounterAddIngredient(_data);
 
+            // 查看这个操作台存在不
             if (!counters.TryGetValue(counterId, out BaseCounter counter))
             {
                 Console.WriteLine($"未知操作台: {counterId}");
                 return;
             }
 
+            // 如果当前操作台是盘子操作台
             if (counter.Type == CounterType.PlateCounter && counter is PlateCounter plateCounter)
             {
                 plateCounter.PlateCount--;
                 //BroadcastExcept(_sender,NetworkMessage.Create_PlateCounterSync(counter.CounterId, counter.PlateCount));
                 return;
             }
-            else
+            else// 如果当前是其他操作台，则将玩家手里的配料放在操作台上
             {
                 counter.ItemIndex = ingredientId;
             }
@@ -475,7 +545,7 @@ namespace KitchenChaos_Server.Room
 
             Console.WriteLine($"[GameServer] 玩家{_sender.Player.PlayerId} 交互: 台子{counterId} → 物品{ingredientId}, 手中 → 物品{_sender.Player.HeldItemIndex}");
 
-            // ★ 合并为一条原子消息：同时广播操作台和玩家状态
+            // 给其他客户端发送当前的操作台信息
             BroadcastExcept(_sender, NetworkMessage.Create_CounterAddIngredient(
                 counterId,
                 ingredientId));
@@ -777,26 +847,13 @@ namespace KitchenChaos_Server.Room
             return false;
         }
 
-        public List<int> GetRoomsPlayer()
+        public List<ServerPlayer> GetRoomPlayerInfo()
         {
-            List<int> list = new List<int>();
-
-            foreach (var player in players.Values)
+            lock (stateLock)
             {
-                list.Add(player.PlayerId);
+                List<ServerPlayer> list = players.Values.ToList();
+                return list;
             }
-            return list;
-        }
-
-        public List<string> GetRoomsPlayerName()
-        {
-            List<string> list = new List<string>();
-
-            foreach (var player in players.Values)
-            {
-                list.Add(player.Name);
-            }
-            return list;
         }
     }
 }

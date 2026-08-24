@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using KitchenChaos_Server.Message;
 using KitchenChaos_Server.Room;
@@ -158,7 +159,10 @@ namespace KitchenChaos_Server
                 case MessageType.C2S_Disconnect:
                     _client.Disconnect();
                     break;
-                default:
+                case MessageType.C2S_StartGame:
+                    HandleStartGame(_data);
+                    break;
+                default:// 其他游戏的内的同步
                     var room = _client.CurrentRoom;
                     if (room == null)
                     {
@@ -181,7 +185,19 @@ namespace KitchenChaos_Server
         private void HandleCreateRoom(ServerClient _client,byte[] _data)
         {
             var (maxPlayers,name) = NetworkMessage.Parse_CreateRoom(_data);// 解析客户端上传的房间参数：最多游玩玩家，房间名字
-            roomManager.CreateRoom(_client,name,maxPlayers);// 创建房间
+            ServerRoom room = roomManager.CreateRoom(_client,name,maxPlayers);// 创建房间
+
+            lock (clientsLock)
+            {
+                // 向其他客户端发送房间列表更新的信息
+                foreach (var client in clients)
+                {
+                    if (client != _client)
+                    {
+                        client.Send(NetworkMessage.Create_RequestRoomList(roomManager.GetRoomList()));
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -202,6 +218,13 @@ namespace KitchenChaos_Server
         {
             var roomId = NetworkMessage.Parse_DestroyRoom(_data);
             roomManager.RemoveRoom(_client,roomId);
+        }
+
+        private void HandleStartGame(byte[] _data)
+        {
+            var roomId = NetworkMessage.Parse_StartGame(_data);
+            // 通知该房间内的所有客户端，转移场景
+            roomManager.StartGame(roomId);
         }
     }
 }

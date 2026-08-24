@@ -130,7 +130,12 @@ namespace KitchenChaos_Server
             Console.WriteLine($"[ServerDeliveryManager] 收到交付请求: 盘子{_plateId} 配料=[{string.Join(",", plateIngredients)}]");
 
             bool matched = false;
+            int completedRecipeIndex = -1;
+            int newScore = 0;
+            int remainingCount = 0;
 
+            // 锁内只做状态变更；广播放到锁外执行，
+            // 保证「先 room 锁、后 stateLock」的全局锁顺序，避免与 ServerRoom 互相等待而死锁。
             lock (stateLock)
             {
                 for (int i = 0; i < waitingRecipeIndexes.Count; i++)
@@ -142,15 +147,21 @@ namespace KitchenChaos_Server
                         waitingRecipeIndexes.RemoveAt(i);
                         successfulRecipesAmount++;
                         matched = true;
-
-                        // 广播订单完成 + 分数
-                        room.BroadcastAll(NetworkMessage.Create_RecipeCompleted(recipeIndex));
-                        room.BroadcastAll(NetworkMessage.Create_ScoreUpdate(successfulRecipesAmount));
-
-                        Console.WriteLine($"[ServerDeliveryManager] 交付成功! 配方{recipeIndex}({RecipeRegistry.GetName(recipeIndex)}), 累计={successfulRecipesAmount}, 剩余订单={waitingRecipeIndexes.Count}");
+                        completedRecipeIndex = recipeIndex;
+                        newScore = successfulRecipesAmount;
+                        remainingCount = waitingRecipeIndexes.Count;
                         break;
                     }
                 }
+            }
+
+            if (completedRecipeIndex >= 0)
+            {
+                // 广播订单完成 + 分数
+                room.BroadcastAll(NetworkMessage.Create_RecipeCompleted(completedRecipeIndex));
+                room.BroadcastAll(NetworkMessage.Create_ScoreUpdate(newScore));
+
+                Console.WriteLine($"[ServerDeliveryManager] 交付成功! 配方{completedRecipeIndex}({RecipeRegistry.GetName(completedRecipeIndex)}), 累计={newScore}, 剩余订单={remainingCount}");
             }
 
             // DeliveryCounter 一定会消费盘子：无论成功失败都销毁

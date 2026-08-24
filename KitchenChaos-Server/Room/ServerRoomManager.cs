@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Policy;
 
 namespace KitchenChaos_Server.Room
 {
@@ -32,36 +31,35 @@ namespace KitchenChaos_Server.Room
                     Console.WriteLine($"[ServerRoomManager] 房间创建失败,该客户端{_owner} 已在房间中");
                     return null;
                 }
-            }
 
-            int roomId = nextRoomId++;
-            // 创建房间
-            ServerRoom room = new ServerRoom(roomId, _roomName, _maxPlayers, _owner.Player.PlayerId);
-            if (!rooms.ContainsKey(roomId))
-            {
-                rooms.Add(roomId, room);
-                int seadId = room.AddClient(_owner);
-                if (seadId != -1)
+                int roomId = nextRoomId++;
+                // 创建房间
+                ServerRoom room = new ServerRoom(roomId, _roomName, _maxPlayers, _owner.Player.PlayerId);
+                if (!rooms.ContainsKey(roomId))
                 {
-                    // 向客户端发送房间创建的消息
-                    _owner.Send(NetworkMessage.Create_RoomCreated(roomId, _roomName, _maxPlayers));
-                    // 房主直接加入房间
-                    _owner.Send(NetworkMessage.Create_RoomJoined(roomId,seadId));
+                    rooms.Add(roomId, room);
+                    int seadId = room.AddClient(_owner);// 房主直接加入房间
+                    if (seadId != -1)
+                    {
+                        // 向客户端发送房间创建的消息
+                        _owner.Send(NetworkMessage.Create_RoomCreated(roomId));
+                        _owner.Send(NetworkMessage.Create_RoomJoined(roomId, seadId, _owner.Player.PlayerId, _owner.Player.Name));
+                    }
                 }
-            }
-            else 
-            {
-                return rooms[roomId];
-            }
+                else
+                {
+                    return rooms[roomId];
+                }
 
-            return room;
+                return room;
+            }
         }
 
         public bool JoinRoom(int _roomId, ServerClient _client)
         {
             if (_client.CurrentRoom != null)
             {
-                return false ;
+                return false;
             }
 
             lock (roomsLock)
@@ -75,10 +73,12 @@ namespace KitchenChaos_Server.Room
                             if (room.roomState == ERoomState.WaitingForPlayers)
                             {
                                 int seadId = room.AddClient(_client);
-                                // 给客户端发送加入成功的消息，让客户端进入房间
-                                _client.Send(NetworkMessage.Create_RoomJoined(_roomId, seadId));
-                                // 给客户端发送当前加入房间的玩家，方便客户端更新玩家模型
-                                room.BroadcastAll(NetworkMessage.Create_RoomPlayerListSync(room.GetRoomsPlayer(), room.GetRoomsPlayerName()));
+                                // 给要加入房间的客户端发送加入成功的消息（RoomJoined），让客户端进入房间并切换场景
+                                _client.Send(NetworkMessage.Create_RoomJoined(_roomId, seadId, _client.Player.PlayerId, _client.Player.Name));
+                                _client.Send(NetworkMessage.Create_RoomPlayerListSync(room.GetRoomPlayerInfo()));
+
+                                // 给房间内的其他客户端发送当前加入房间的玩家，方便客户端更新玩家模型
+                                room.BroadcastExcept(_client, NetworkMessage.Create_RoomJoined(_roomId, seadId, _client.Player.PlayerId,_client.Player.Name));
                                 return true;
                             }
                             else
@@ -122,22 +122,28 @@ namespace KitchenChaos_Server.Room
 
             bool roomIsEmpty = room.RemoveClient(_client);
             if (roomIsEmpty)
-                RemoveRoom(_client,room.RoomId);
+                RemoveRoom(_client, room.RoomId);
         }
 
         /// <summary>
         /// 移除房间
         /// </summary>
         /// <param name="_roomId">要移除的房间ID</param>
-        public void RemoveRoom(ServerClient _client,int _roomId)
+        public void RemoveRoom(ServerClient _client, int _roomId)
         {
-            // 只有房主才可以移除房间
-            if (rooms.ContainsKey(_roomId) && _client.Player.PlayerId == rooms[_roomId].OwnPlayerId)
+            lock (roomsLock)
             {
-                rooms[_roomId].BroadcastAll(NetworkMessage.Create_RoomDestroyed(_roomId));
-                rooms[_roomId].Stop();
+                // 只有房主才可以移除房间
+                if (rooms.ContainsKey(_roomId) && _client.Player.PlayerId == rooms[_roomId].OwnPlayerId)
+                {
+                    rooms[_roomId].BroadcastAll(NetworkMessage.Create_RoomDestroyed(_roomId));
+                    rooms[_roomId].Stop();
 
-                rooms.Remove(_roomId);
+                    rooms.Remove(_roomId);
+
+                    //向其他客户端更新当前的房间列表
+                    NetworkMessage.Create_RequestRoomList(GetRoomList());
+                }
             }
         }
 
@@ -152,7 +158,23 @@ namespace KitchenChaos_Server.Room
                 rooms.Remove(roomId);
             }
 
-            rooms.Clear(); 
+            rooms.Clear();
+        }
+
+        public void StartGame(int _roomId)
+        {
+            lock (roomsLock)
+            {
+                foreach (var roomId in rooms.Keys)
+                {
+                    if (roomId == _roomId)
+                    {
+                        // 先查看当前房间的人数是否满足
+                        if (rooms[roomId].players.Count == rooms[roomId].MaxPlayer)
+                            rooms[roomId].StartGame();
+                    }
+                }
+            }
         }
 
         public void OnClientDisconnected(ServerClient _client)
@@ -160,9 +182,9 @@ namespace KitchenChaos_Server.Room
             LeaveRoom(_client);
         }
 
-        public List<(int,string,int,int)> GetRoomList()
+        public List<(int, string, int, int)> GetRoomList()
         {
-            lock (rooms)
+            lock (roomsLock)
             {
                 List<(int, string, int, int)> list = new List<(int, string, int, int)>();
                 foreach (var room in rooms.Values)
@@ -190,5 +212,6 @@ namespace KitchenChaos_Server.Room
                 Console.WriteLine($"[ServerRoomManager] 当前房间：{_roomId} 不存在");
                 return null;
             }
-        }    }
+        }
+    }
 }

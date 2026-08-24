@@ -99,12 +99,12 @@ namespace KitchenChaos_Server.Message
         /// <summary>
         /// 玩家准备就绪（服务端→客户端广播）。
         /// </summary>
-        public static byte[] Create_PlayerReady(int _playerId, int _isReady)
+        public static byte[] Create_PlayerReady(int _playerId, bool _isReady)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
             writer.Write(_playerId);
-            writer.Write(_isReady);
+            writer.Write(_isReady ? 1 : 0);
             return Pack(MessageType.PlayerReady, ms.ToArray());
         }
 
@@ -389,7 +389,7 @@ namespace KitchenChaos_Server.Message
             return ReadString(reader);
         }
 
-        public static (int,bool) Parse_PlayerReade(byte[] _body)
+        public static (int,bool) Parse_PlayerReady(byte[] _body)
         {
             var ms = new MemoryStream(_body);    
             var reader = new BinaryReader(ms);
@@ -644,23 +644,23 @@ namespace KitchenChaos_Server.Message
         #endregion
 
         #region Room
-        public static byte[] Create_RoomCreated(int _roomId,string _nams,int _maxPlayer)
+        public static byte[] Create_RoomCreated(int _roomId)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
             writer.Write(_roomId);
-            WriteString(writer,_nams);
-            writer.Write(_maxPlayer);   
             return Pack(MessageType.RoomCreated,ms.ToArray());
         }
 
-        public static byte[] Create_RoomJoined(int _roomId, int _seadId)
+        public static byte[] Create_RoomJoined(int _roomId, int _seadId,int _playerId,string _playerName)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);  
 
             writer.Write(_roomId);
             writer.Write(_seadId);
+            writer.Write(_playerId);
+            WriteString(writer,_playerName);
 
             return Pack(MessageType.RoomJoined,ms.ToArray());
         }
@@ -673,21 +673,19 @@ namespace KitchenChaos_Server.Message
             return Pack(MessageType.RoomJoinFailed, ms.ToArray());
         }
 
-        public static byte[] Create_RoomPlayerListSync(List<int> _players, List<string> _names)
+        public static byte[] Create_RoomPlayerListSync(List<ServerPlayer> _list)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
 
-            writer.Write(_players.Count);
-            foreach (var player in _players)
+            int count = _list.Count;
+            writer.Write(count);
+            for (int i = 0; i < count; i++)
             {
-                writer.Write(player);
-            }
-
-            writer.Write(_names.Count);
-            foreach (var name in _names)
-            {
-                WriteString(writer,name);
+                writer.Write(_list[i].SeatId);
+                writer.Write(_list[i].PlayerId);
+                WriteString(writer, _list[i].Name);
+                writer.Write(_list[i].IsReady ? 1:0);
             }
 
             return Pack(MessageType.RoomPlayerListSync, ms.ToArray());
@@ -721,6 +719,14 @@ namespace KitchenChaos_Server.Message
             return Pack(MessageType.RequestRoomList,ms.ToArray());
         }
 
+        public static byte[] Create_StartGame(int _roomId)
+        {
+            var ms = new MemoryStream();
+            var writer = new BinaryWriter(ms);
+            writer.Write(_roomId);
+            return Pack(MessageType.StartGame, ms.ToArray());
+        }
+
         #region 解析
         public static (int maxPlayers,string roomName) Parse_CreateRoom(byte[] _data)
         {
@@ -738,9 +744,17 @@ namespace KitchenChaos_Server.Message
             return reader.ReadInt32();
         }
 
-        public static int Parse_DestroyRoom(byte[] _date)
+        public static int Parse_DestroyRoom(byte[] _data)
         {
-            var ms = new MemoryStream(_date);
+            var ms = new MemoryStream(_data);
+            var reader = new BinaryReader(ms);
+            int roomId = reader.ReadInt32();
+            return roomId;
+        }
+
+        public static int Parse_StartGame(byte[] _data)
+        {
+            var ms = new MemoryStream(_data);
             var reader = new BinaryReader(ms);
             int roomId = reader.ReadInt32();
             return roomId;

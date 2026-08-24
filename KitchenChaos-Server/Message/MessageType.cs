@@ -30,9 +30,6 @@
         PlateRemoveIngredient = 22, // 盘子配料移除广播（plateId + ingredientIndex）
         SendMessage = 23, // 聊天消息广播（服务端 → 客户端，playerId + message）
 
-        PlayerReady = 24,
-        ClientInit = 25,
-
 
 
         // ========== 客户端 → 服务端 ==========
@@ -40,7 +37,6 @@
         C2S_PlayerMove = 101, // 玩家移动
         C2S_PlayerInteract = 102, // 玩家按交互键（E键）
         C2S_PlayerInteractAlternate = 103, // 玩家按副交互键（空格）
-        C2S_PlayerReady = 104, // 玩家准备就绪
         C2S_Disconnect = 105, // 主动断开连接
         C2S_InteractResult = 106, // 客户端上报交互结果
         C2S_CounterStartMark = 107, //台子的状态发生变化
@@ -66,6 +62,8 @@
         RoomPlayerListSync = 33,       // 房间玩家列表更新
         RoomDestroyed = 34,        // 房间被解散
         RequestRoomList = 35,// 请求房间列表
+        PlayerReady = 36,// 玩家准备
+        StartGame = 37,// 开始游戏
 
         // 房间相关 (上行: 120-129)
         C2S_CreateRoom = 120,      // 创建房间（附带最大玩家数）
@@ -73,6 +71,9 @@
         C2S_LeaveRoom = 122,       // 离开房间
         C2S_DestroyRoom = 123,     // 房主解散房间
         C2S_RequestRoomList  =125,// 请求房间列表
+        C2S_PlayerReady = 126, // 玩家准备就绪
+        C2S_StartGame = 127 // 开始游戏
+
         #endregion
     }
 }
