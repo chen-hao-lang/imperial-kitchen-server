@@ -502,7 +502,7 @@ namespace KitchenChaos_Server.Room
         /// </summary>
         private void HandlePlayerInteract(ServerClient _sender, byte[] _data) 
         {
-            int counterId = NetworkMessage.Parse_InteractAlternate(_data);
+            var (playerId,counterId) = NetworkMessage.Parse_PlayerInteract(_data);
             ServerPlayer player = _sender.Player;
 
             if (!counters.TryGetValue(counterId, out var counter))
@@ -523,7 +523,7 @@ namespace KitchenChaos_Server.Room
                 }
 
                 // 与切菜台 和 桌子交互
-                if (counter.Type == CounterType.ClearCounter && counter.Type == CounterType.CuttingCounter)
+                if (counter.Type == CounterType.ClearCounter || counter.Type == CounterType.CuttingCounter)
                 {
                     HandleClearCounterInteract(serverCounter, player);
                     return;
@@ -605,9 +605,14 @@ namespace KitchenChaos_Server.Room
                 else if(!TryGetPlateByOwner(_player.PlayerId,out var plateOnPlayer))// 玩家手里有配料
                 {
                     int ing = _player.HeldItemIndex;
-                    _player.HeldItemIndex = -1;
-                    BroadcastAll(NetworkMessage.Create_PlateAddIngredient(plateOnPlayer.PlateId,ing));
-                    BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, -1, _player.PlayerId, -1));
+                    // 将操作台上的配料放到盘子上
+                    if (plateOnCounter.TryAddIngredient(ing))
+                    {
+                        BroadcastAll(NetworkMessage.Create_PlateAddIngredient(plateOnCounter.PlateId, ing));
+
+                        _player.HeldItemIndex = -1;
+                        BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, -1, _player.PlayerId, -1));
+                    }
                 }
 
                 return;

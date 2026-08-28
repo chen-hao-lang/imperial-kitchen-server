@@ -121,15 +121,6 @@ namespace KitchenChaos_Server.Message
             return Pack(MessageType.InteractionSync, ms.ToArray());
         }
 
-        public static byte[] Create_CounterAddIngredient(int _counterId, int _ingredientId)
-        {
-            var ms = new MemoryStream();
-            var writer = new BinaryWriter(ms);
-            writer.Write(_counterId);
-            writer.Write(_ingredientId);
-            return Pack(MessageType.CounterAddIngredient, ms.ToArray());
-        }
-
         public static byte[] Crteate_GameOver()
         {
             var ms = new MemoryStream();
@@ -386,13 +377,13 @@ namespace KitchenChaos_Server.Message
         /// <summary>
         /// 玩家交互消息：解析出交互的台子ID。
         /// </summary>
-        public static (int playerId, int playerItem) Parse_PlayerInteract(byte[] body)
+        public static (int playerId, int counterId) Parse_PlayerInteract(byte[] _data)
         {
-            var ms = new MemoryStream(body);
+            var ms = new MemoryStream(_data);
             var reader = new BinaryReader(ms);
             int playerId = reader.ReadInt32();
-            int playerItem = reader.ReadInt32();
-            return (playerId, playerItem);
+            int counterId = reader.ReadInt32();
+            return (playerId, counterId);
         }
 
         /// <summary>
