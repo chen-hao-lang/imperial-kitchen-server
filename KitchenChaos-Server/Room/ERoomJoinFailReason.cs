@@ -1,11 +1,5 @@
 ﻿namespace KitchenChaos_Server.Room
 {
-    public enum ERoomState : byte
-    {
-        WaitingForPlayers = 0,
-        GameInPrograss = 1,
-    }
-
     public enum ERoomJoinFailReason : byte
     {
         RoomNotFound = 0,// 房间不存在

@@ -5,13 +5,7 @@ using KitchenChaos_Server.Room;
 
 namespace KitchenChaos_Server
 {
-    /// <summary>
-    /// 服务器权威的订单管理器。
-    /// - 游戏进行中按固定间隔生成订单（广播 RecipeSpawned）
-    /// - 收到客户端交付请求（plateId）后，用服务器自己维护的盘子配料数据做权威校验
-    /// - 校验结果广播 RecipeCompleted / RecipeFailed + ScoreUpdate，并销毁交付的盘子
-    /// 客户端只负责展示订单与提交交付请求，不做任何订单校验。
-    /// </summary>
+
     public class ServerDeliveryManager
     {
         private ServerRoom room;
@@ -26,6 +20,8 @@ namespace KitchenChaos_Server
         private float spawnRecipeTimer;
         private const float SPAWN_RECIPE_INTERVAL = 4f;
         private const int MAX_WAITING_RECIPES = 4;
+
+        private bool isFirstDelivered = false;
 
         public ServerDeliveryManager(ServerRoom _room)
         {
@@ -56,7 +52,7 @@ namespace KitchenChaos_Server
         /// <summary>
         /// 新一局开始时调用：清空订单与分数，并立即生成第一单。
         /// </summary>
-        public void StartNewGame()
+        public void StartGame()
         {
             lock (stateLock)
             {
@@ -65,7 +61,7 @@ namespace KitchenChaos_Server
                 spawnRecipeTimer = 0f;
             }
 
-            TrySpawnRecipe();
+            //TrySpawnRecipe();
             Console.WriteLine("[ServerDeliveryManager] 新一局开始，订单与分数已重置");
         }
 
@@ -144,6 +140,13 @@ namespace KitchenChaos_Server
 
                     if (RecipeRegistry.Matches(recipeIndex, plateIngredients))
                     {
+                        if (!isFirstDelivered)// 第一次提交，让游戏开始计时
+                        {
+                            isFirstDelivered = true;
+
+                            room.RoomGameManager.StartGame();
+                        }
+
                         waitingRecipeIndexes.RemoveAt(i);
                         successfulRecipesAmount++;
                         matched = true;

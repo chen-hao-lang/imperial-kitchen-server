@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using KitchenChaos_Server.Message;
@@ -10,9 +9,10 @@ namespace KitchenChaos_Server
     public enum EGameState
     {
         WaitingForPlayers = 0,
-        CDToStart = 1,
-        GamePlaying = 2,
-        GameOver = 3
+        WaitingForDelivery = 1,
+        CDToStart = 2,
+        GamePlaying = 3,
+        GameOver = 4
     }
 
     /// <summary>
@@ -22,7 +22,7 @@ namespace KitchenChaos_Server
     public class ServerGameManager
     {
         private ServerRoom room;
-        public EGameState State { get; private set; } = EGameState.WaitingForPlayers;
+        public EGameState GameStata { get; private set; } = EGameState.WaitingForPlayers;
         public float RemainingTime { get; private set; }
 
         private bool isRunning;
@@ -40,8 +40,12 @@ namespace KitchenChaos_Server
             ct = _ct;
         }
 
+        /// <summary>
+        /// 开始游戏计时
+        /// </summary>
         public void StartGame()
         {
+            // 当前第一次提交订单时，开始计时
             lock (readyLock)
             {
                 _ = RunGameLoopAsync();
@@ -59,11 +63,10 @@ namespace KitchenChaos_Server
                 if (isRunning) return;
                 isRunning = true;
 
-                State = EGameState.CDToStart;
-                room.BroadcastAll(NetworkMessage.Create_GameStateChange((byte)EGameState.CDToStart));
+                GameStata = EGameState.CDToStart;
+                //room.BroadcastAll(NetworkMessage.Create_GameStateChange((byte)EGameState.CDToStart));
                 Console.WriteLine("[ServerGameManager] 倒计时开始");
 
-                room.SetRoomState(ERoomState.GameInPrograss);
                 for (int i = (int)CD_DURATION; i > 0 && !ct.IsCancellationRequested; i--)
                 {
                     room.BroadcastAll(NetworkMessage.Create_GameStartCD(i));
@@ -71,10 +74,10 @@ namespace KitchenChaos_Server
                     await Task.Delay(1000, ct);
                 }
 
-                State = EGameState.GamePlaying;
+                GameStata = EGameState.GamePlaying;
                 // 新一局：重置订单与分数，并立即生成第一单
-                room.DeliveryManager.StartNewGame();
-                room.BroadcastAll(NetworkMessage.Create_GameStateChange((byte)EGameState.GamePlaying));
+                //room.DeliveryManager.StartNewGame();
+                //room.BroadcastAll(NetworkMessage.Create_GameStateChange((byte)EGameState.GamePlaying));
                 Console.WriteLine("[ServerGameManager] 游戏开始");
 
                 RemainingTime = GAME_DURATION;
@@ -85,9 +88,9 @@ namespace KitchenChaos_Server
                     RemainingTime -= 1f;
                 }
 
-                State = EGameState.GameOver;
-                room.SetRoomState(ERoomState.WaitingForPlayers);
-                room.BroadcastAll(NetworkMessage.Create_GameStateChange((byte)EGameState.GameOver));
+                GameStata = EGameState.GameOver;
+                room.BroadcastAll(NetworkMessage.Crteate_GameOver());
+                //room.BroadcastAll(NetworkMessage.Create_GameStateChange((byte)EGameState.GameOver));
                 Console.WriteLine("[ServerGameManager] 游戏结束");
             }
             catch (TaskCanceledException ex)

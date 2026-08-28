@@ -52,7 +52,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RecipeRegistry.cs" />
-    <Compile Include="Room\ERoomState.cs" />
+    <Compile Include="Room\ERoomJoinFailReason.cs" />
     <Compile Include="Room\ServerRoom.cs" />
     <Compile Include="Room\ServerRoomManager.cs" />
     <Compile Include="ServerClient.cs" />

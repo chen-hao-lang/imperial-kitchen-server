@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.ComponentModel;
 
 namespace KitchenChaos_Server
 {
@@ -12,7 +13,7 @@ namespace KitchenChaos_Server
         public int PlateId { get; }
 
         /// <summary>盘子上的配料索引列表</summary>
-        public List<int> Ingredients { get; private set; } = new List<int>();
+        public List<int> CurrentIngredients { get; private set; } = new List<int>();
 
         /// <summary>盘子当前持有者类型：0=玩家, 1=操作台</summary>
         public byte OwnerType { get; set; }
@@ -22,6 +23,7 @@ namespace KitchenChaos_Server
 
         /// <summary>盘子的 KitchenObjectSO 索引（用于远程客户端生成）</summary>
         public int SoIndex { get; private set; } = -1;
+        public HashSet<int> ValidIngredientIndexes { get; private set; } = new HashSet<int>();
 
         public ServerPlate(int _plateId)
         {
@@ -33,17 +35,51 @@ namespace KitchenChaos_Server
             SoIndex = _plateSOIndex;
         }
 
-        public void AddIngredients(int _ingredients)
+        public bool TryAddIngredient(int _ingredients)
         {
-            if (!Ingredients.Contains(_ingredients))
+            if (!CurrentIngredients.Contains(_ingredients))
             {
-                Ingredients.Add(_ingredients);
+                CurrentIngredients.Add(_ingredients);
+                return true;
             }
+
+            return false;
+        }
+
+        public bool TryRemoveIngredient(int _ingredients)
+        {
+            if (CurrentIngredients.Contains(_ingredients))
+            {
+                CurrentIngredients.Remove(_ingredients);
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 判断当前盘子的拥有者是不是玩家
+        /// </summary>
+        /// <param name="_playerId"></param>
+        /// <returns></returns>
+        public bool IsHeldByPlayer(int _playerId)
+        {
+            return OwnerType == 0 && OwnerId == _playerId;
+        }
+
+        /// <summary>
+        /// 判断盘子当前的拥有者是不是操作台
+        /// </summary>
+        /// <param name="_counterId"></param>
+        /// <returns></returns>
+        public bool IsOnCounter(int _counterId)
+        {
+            return OwnerType == 1 && OwnerId == _counterId;
         }
 
         public void SetIngredients(List<int> _ingredients)
         {
-            Ingredients = _ingredients;
+            CurrentIngredients = _ingredients;
         }
     }
 }

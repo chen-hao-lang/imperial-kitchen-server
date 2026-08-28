@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Text;
 
 namespace KitchenChaos_Server.Message
@@ -65,15 +66,6 @@ namespace KitchenChaos_Server.Message
             var writer = new BinaryWriter(ms);
             writer.Write(_playerId);
             return Pack(MessageType.Connect, ms.ToArray());
-        }
-
-        public static byte[] Create_PlayerJoined(int _playerId, string _playerName)
-        {
-            var ms = new MemoryStream();
-            var writer = new BinaryWriter(ms);
-            writer.Write(_playerId);
-            WriteString(writer, _playerName);
-            return Pack(MessageType.PlayerJoined, ms.ToArray());
         }
 
         public static byte[] Create_PlayerLeft(int _playerId)
@@ -138,12 +130,10 @@ namespace KitchenChaos_Server.Message
             return Pack(MessageType.CounterAddIngredient, ms.ToArray());
         }
 
-        public static byte[] Create_GameStateChange(byte _state)
+        public static byte[] Crteate_GameOver()
         {
             var ms = new MemoryStream();
-            var writer = new BinaryWriter(ms);
-            writer.Write(_state);
-            return Pack(MessageType.GameStateChange, ms.ToArray());
+            return Pack(MessageType.GameOver, ms.ToArray());
         }
 
         public static byte[] Create_TimerSync(float _remaingTime)
@@ -151,7 +141,7 @@ namespace KitchenChaos_Server.Message
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
             writer.Write(_remaingTime);
-            return Pack(MessageType.TimerSync, ms.ToArray());
+            return Pack(MessageType.GameingTimerSync, ms.ToArray());
         }
 
         /// <summary>
@@ -285,15 +275,6 @@ namespace KitchenChaos_Server.Message
             return Pack(MessageType.CounterProgressSync, ms.ToArray());
         }
 
-        public static byte[] Create_PlayerInteract(int _playerId, int _playerItem)
-        {
-            var ms = new MemoryStream();
-            var writer = new BinaryWriter(ms);
-            writer.Write(_playerId);
-            writer.Write(_playerItem);
-            return Pack(MessageType.PlayerInteract, ms.ToArray());
-        }
-
         #region 盘子相关
         /// <summary>
         /// 通知客户端盘子的拥有者发生改变
@@ -310,15 +291,16 @@ namespace KitchenChaos_Server.Message
         /// <summary>
         /// 盘子持有者变更广播。
         /// </summary>
-        public static byte[] Create_PlateOwnerSync(int _plateId, byte _ownerType, int _ownerId,List<int> _plateCurrentIngredients)
+
+        public static byte[] Create_PlateOwnerSync(ServerPlate _plate)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
-            writer.Write(_plateId);
-            writer.Write(_ownerType);
-            writer.Write(_ownerId);
-            writer.Write(_plateCurrentIngredients.Count);
-            foreach (var ing in _plateCurrentIngredients)
+            writer.Write(_plate.PlateId);
+            writer.Write(_plate.OwnerType);
+            writer.Write(_plate.OwnerId);
+            writer.Write(_plate.CurrentIngredients.Count);
+            foreach (var ing in _plate.CurrentIngredients)
             {
                 writer.Write(ing);
             }
@@ -342,17 +324,6 @@ namespace KitchenChaos_Server.Message
             return Pack(MessageType.PlateDestroy, ms.ToArray());
         }
 
-        /// <summary>
-        /// 盘子配料移除广播（plateId + ingredientIndex）。
-        /// </summary>
-        public static byte[] Create_PlateRemoveIngredient(int _plateId, int _ingredientIndex)
-        {
-            var ms = new MemoryStream();
-            var writer = new BinaryWriter(ms);
-            writer.Write(_plateId);
-            writer.Write(_ingredientIndex);
-            return Pack(MessageType.PlateRemoveIngredient, ms.ToArray());
-        }
 
         public static byte[] Create_RemotePlate(int _counterId, int _plateId)
         {

@@ -25,8 +25,6 @@ namespace KitchenChaos_Server
     /// </summary>
     public class ServerCounter : BaseCounter
     {
-        
-
         /// <summary>通用进度 0f~1f（切菜/煎/煮等进度类操作台使用）</summary>
         public float Progress { get; set; }
 
@@ -46,6 +44,7 @@ namespace KitchenChaos_Server
         public float BoilingTimer { get; set; }
         /// <summary>该配方需要的煮沸总时长（秒），由客户端上报</summary>
         public float MaxBoilingTimer { get; set; }
+        public List<int> Ingredients { get; set; }
 
         /// <summary>
         /// 煮沸进度归一化值
@@ -57,10 +56,6 @@ namespace KitchenChaos_Server
         { 
 
         }
-        //{
-        //    CounterId = _counterId;
-        //    Type = _type;
-        //}
 
         /// <summary>
         /// 切菜进度归一化值

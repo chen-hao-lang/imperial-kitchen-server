@@ -70,7 +70,7 @@ namespace KitchenChaos_Server.Room
                     {
                         if (!room.IsFull)
                         {
-                            if (room.roomState == ERoomState.WaitingForPlayers)
+                            if (room.RoomGameManager.GameStata == EGameState.WaitingForPlayers)
                             {
                                 int seadId = room.AddClient(_client);
                                 // 给要加入房间的客户端发送加入成功的消息（RoomJoined），让客户端进入房间并切换场景
