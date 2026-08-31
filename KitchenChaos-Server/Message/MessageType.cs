@@ -19,28 +19,23 @@
     PlayerPosition = 3,           // 广播玩家位置
     InteractionSync = 5,          // 交互同步：一次原子操作，同时携带操作台和玩家的物品状态
 
-    // ══════════════ 操作台 ══════════════
+    // 操作台
     // 上传（客户端 → 服务端）
+    C2S_RegisterContainerItem = 119,
+    C2S_RegisterCuttingRecipes = 110,// 切菜配方上报
+    C2S_RegisterBoilingRecipes = 111,// 煮菜配方上报
     C2S_CounterRegister = 108,    // 客户端上报操作台类型映射（连接后首次发送）
-    C2S_InteractResult = 106,     // （预留）客户端上报交互结果
-    C2S_CounterStartMark = 107,   // （待废弃）客户端上报台子状态变化（煮沸时长）
-    C2S_CounterAddIngredient = 109, // （待废弃）客户端上报操作台添加配料
 
     // 解析（服务端 → 客户端）
     CounterProgressSync = 14,     // 操作台进度同步（切菜/煎/煮的进度条）
     CounterAddIngredient = 15,    // 操作台添加配料广播
     RemotePlate = 17,             // 盘子与操作台的同步（放到操作台上，或从操作台拿走）
+    CounterStateSync = 25,// 操作台状态同步
 
     // ══════════════ 盘子 ══════════════
     // 上传（客户端 → 服务端）
     C2S_RegisterPlateSO = 113,    // 上报盘子 SO 索引（FullSync 恢复用）
     C2S_RegisterPlateValidIngredients = 129, // 上报盘子可装配料列表（内容注册，服务器裁决）——原 125 与 C2S_RequestRoomList 冲突，已改 129
-    // （以下为已废弃的客户端上报，服务器权威化后不再使用）
-    // C2S_PlateOwnerSync = 110,  // （废弃）盘子持有者变更上报
-    // C2S_PlateAddIngredient = 111, // （废弃）盘子添加配料上报
-    // C2S_PlateDestroy = 112,    // （废弃）盘子销毁上报
-    // C2S_RemotePlate = 114,     // （废弃）盘子从操作台被拿走上报
-    // C2S_PlateRemoveIngredient = 115, // （废弃）盘子移除配料上报
 
     // 解析（服务端 → 客户端）
     PlateSpawned = 18,            // 通知所有客户端新盘子出现

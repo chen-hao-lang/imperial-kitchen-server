@@ -266,6 +266,36 @@ namespace KitchenChaos_Server.Message
             return Pack(MessageType.CounterProgressSync, ms.ToArray());
         }
 
+        /// <summary>
+        /// 操作台状态变更
+        /// </summary>
+        /// <param name="_counterId"></param>
+        /// <param name="_state"></param>
+        /// <returns></returns>
+        public static byte[] Create_CounterStateSync(int _counterId, byte _state)
+        {
+            var ms = new MemoryStream();
+            var writer = new BinaryWriter(ms);
+            writer.Write(_counterId);
+            writer.Write(_state);
+            return Pack(MessageType.CounterStateSync, ms.ToArray());
+        }
+        
+        /// <summary>
+        /// 操作台添加配料
+        /// </summary>
+        /// <param name="_counterId"></param>
+        /// <param name="_ingredients"></param>
+        /// <returns></returns>
+        public static byte[] Create_CounterAddIngredient(int _counterId, int _ingredients)
+        {
+            var ms = new MemoryStream();
+            var writer = new BinaryWriter(ms);
+            writer.Write(_counterId);
+            writer.Write(_ingredients);
+            return Pack(MessageType.CounterAddIngredient,ms.ToArray());
+        }
+
         #region 盘子相关
         /// <summary>
         /// 通知客户端盘子的拥有者发生改变
@@ -305,6 +335,15 @@ namespace KitchenChaos_Server.Message
             writer.Write(_plateId);
             writer.Write(_ingredientIndex);
             return Pack(MessageType.PlateAddIngredient, ms.ToArray());
+        }
+
+        public static byte[] Create_PlateRemoveIngredient(int _plateId, int _ingredientIndex)
+        {
+            var ms = new MemoryStream();
+            var writer = new BinaryWriter(ms);
+            writer.Write(_plateId);
+            writer.Write(_ingredientIndex);
+            return Pack(MessageType.PlateRemoveIngredient, ms.ToArray());
         }
 
         public static byte[] Create_PlateDestroy(int _plateId)
@@ -397,41 +436,12 @@ namespace KitchenChaos_Server.Message
         }
 
         /// <summary>
-        /// 解析玩家手持物品变化消息：(玩家ID, 手持物品SO索引)
-        /// </summary>
-        /// <param name="body">消息体</param>
-        /// <returns></returns>
-        public static (int playerId, int kitchenObjectSOIndex) Parse_PlayerHeldKitchenObjUpdate(byte[] body)
-        {
-            var ms = new MemoryStream(body);
-            var reader = new BinaryReader(ms);
-            int playerId = reader.ReadInt32();
-            int kitchenObjectSOIndex = reader.ReadInt32();
-            return (playerId, kitchenObjectSOIndex);
-        }
-
-        /// <summary>
-        /// 解析交互结果
-        /// </summary>
-        /// <param name="_body"></param>
-        /// <returns>（counterId,台子上现在的物品索引，玩家手上现在的物品索引）</returns>
-        public static (int counterId, int counterItemIndex, int playerItemIndex) Parse_InteractResult(byte[] _body)
-        {
-            var ms = new MemoryStream(_body);
-            var reader = new BinaryReader(ms);
-            int counterId = reader.ReadInt32();
-            int counterItemIndex = reader.ReadInt32();
-            int playerItemIndex = reader.ReadInt32();
-            return (counterId, counterItemIndex, playerItemIndex);
-        }
-
-        /// <summary>
         /// 解析客户端上报的操作台类型映射。
         /// 格式：counterCount(int) + [counterId(int) + counterType(byte)] * N
         /// </summary>
-        public static (int counterId, byte counterType)[] Parse_CounterRegister(byte[] _body)
+        public static (int counterId, byte counterType)[] Parse_CounterRegister(byte[] _data)
         {
-            var ms = new MemoryStream(_body);
+            var ms = new MemoryStream(_data);
             var reader = new BinaryReader(ms);
             int count = reader.ReadInt32();
             var result = new (int counterId, byte counterType)[count];
@@ -445,70 +455,67 @@ namespace KitchenChaos_Server.Message
         }
 
         /// <summary>
-        /// 解析操作台状态更新（煮沸等进度类操作台启动时由客户端上报）。
-        /// 格式：counterId(int) + maxBoilingTimer(float)
+        /// 解析容器固定物品注册：counterId(int) + soIndex(int)
         /// </summary>
-        public static (int counterId, float maxBoilingTimer) Parse_CounterStartMark(byte[] _body)
+        public static (int,int) Parse_RegisterContainerItem(byte[] _body)
         {
             var ms = new MemoryStream(_body);
             var reader = new BinaryReader(ms);
             int counterId = reader.ReadInt32();
-            float maxBoilingTimer = reader.ReadSingle();
-            return (counterId, maxBoilingTimer);
+            int soIndex = reader.ReadInt32();
+            return (counterId, soIndex);
         }
 
-        public static (int counterId,int IngredientId) Parse_CounterAddIngredient(byte[] _body)
+        public static (int,List<BoilingRecipeSO>) Parse_RegisterBoilingRecipes(byte[] _data)
         {
-            var ms = new MemoryStream(_body);
+            var ms = new MemoryStream(_data);
             var reader = new BinaryReader(ms);
             int counterId = reader.ReadInt32();
-            int IngredientId = reader.ReadInt32();
-            return (counterId, IngredientId);
+            int count = reader.ReadInt32();
+            List<BoilingRecipeSO> recipes = new List<BoilingRecipeSO>();
+
+            for (int i = 0; i < count; i++)
+            {
+                // 读取inputs
+                int inputCount = reader.ReadInt32();
+                List<int> inputs = new List<int>();
+                for (int j = 0; j < inputCount; j++)
+                {
+                    inputs.Add(reader.ReadInt32());
+                }
+
+                BoilingRecipeSO so = new BoilingRecipeSO(
+                    inputs,
+                    reader.ReadInt32(),// 读取output
+                    reader.ReadSingle()// 读取煮沸时长
+                    );
+
+                recipes.Add(so);
+            }
+
+            return (counterId,recipes);
         }
 
-        /// <summary>
-        /// 解析客户端上报的盘子添加配料（plateId + ingredientIndex）。
-        /// </summary>
-        public static (int plateId, int ingredientIndex) Parse_PlateAddIngredient(byte[] _body)
+        public static (int,List<CuttingRecipeSO>) Parse_RegisterCuttingRecipes(byte[] _data)
         {
-            var ms = new MemoryStream(_body);
+            var ms = new MemoryStream(_data);
             var reader = new BinaryReader(ms);
-            int plateId = reader.ReadInt32();
-            int ingredientIndex = reader.ReadInt32();
-            return (plateId, ingredientIndex);
-        }
+            int counterId = reader.ReadInt32(); 
+            int count = reader.ReadInt32();
+            List<CuttingRecipeSO> recipes = new List<CuttingRecipeSO>();
 
-        /// <summary>
-        /// 解析客户端上报的盘子移除配料（plateId + ingredientIndex）。
-        /// </summary>
-        public static (int plateId, int ingredientIndex) Parse_PlateRemoveIngredient(byte[] _body)
-        {
-            var ms = new MemoryStream(_body);
-            var reader = new BinaryReader(ms);
-            int plateId = reader.ReadInt32();
-            int ingredientIndex = reader.ReadInt32();
-            return (plateId, ingredientIndex);
-        }
+            for (int i = 0; i < count; i++)
+            {
+                CuttingRecipeSO so = new CuttingRecipeSO(
+                    reader.ReadInt32(),// 读取inputs
+                    reader.ReadInt32(),// 读取outputs
+                    reader.ReadInt32()// 需要需要砍几刀
+                    );
 
-        /// <summary>
-        /// 解析客户端上报的盘子销毁（plateId）。
-        /// </summary>
-        public static int Parse_PlateDestroy(byte[] _body)
-        {
-            var ms = new MemoryStream(_body);
-            var reader = new BinaryReader(ms);
-            return reader.ReadInt32();
-        }
+                recipes.Add(so);
+            }
 
-        /// <summary>
-        /// 解析客户端提交的交付请求（plateId）。
-        /// 服务器以自己维护的盘子配料数据做权威校验。
-        /// </summary>
-        public static int Parse_DeliveryRequest(byte[] _body)
-        {
-            var ms = new MemoryStream(_body);
-            var reader = new BinaryReader(ms);
-            return reader.ReadInt32();
+            return (counterId,recipes);
         }
 
         /// <summary>

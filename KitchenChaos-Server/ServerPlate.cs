@@ -37,6 +37,11 @@ namespace KitchenChaos_Server
 
         public bool TryAddIngredient(int _ingredients)
         {
+            if (ValidIngredientIndexes != null && ValidIngredientIndexes.Count > 0)
+            {
+                if (!ValidIngredientIndexes.Contains(_ingredients)) return false;
+            }
+
             if (!CurrentIngredients.Contains(_ingredients))
             {
                 CurrentIngredients.Add(_ingredients);

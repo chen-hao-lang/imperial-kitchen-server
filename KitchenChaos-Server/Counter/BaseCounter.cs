@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace KitchenChaos_Server.Counter
+﻿namespace KitchenChaos_Server.Counter
 {
     public class BaseCounter
     {
@@ -12,6 +6,8 @@ namespace KitchenChaos_Server.Counter
         public CounterType Type { get; set; }
         /// <summary>台子上的物品索引，-1=空</summary>
         public int ItemIndex { get; set; } = -1;
+
+        public int ContainerSOId { get; set; }
 
         public BaseCounter(int _counterId,CounterType _type)
         {
