@@ -780,7 +780,7 @@ namespace KitchenChaos_Server.Room
             // 网络广播
             BroadcastAll(NetworkMessage.Create_PlateOwnerSync(plate));// 实体归玩家
             BroadcastAll(NetworkMessage.Create_RemotePlate(_counter.CounterId, plateId));
-            BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, -1, _player.PlayerId, _player.HeldItemIndex));
+            //BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, -1, _player.PlayerId, _player.HeldItemIndex));
         }
 
         /// <summary>

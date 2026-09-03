@@ -320,6 +320,7 @@ namespace KitchenChaos_Server.Message
             writer.Write(_plate.PlateId);
             writer.Write(_plate.OwnerType);
             writer.Write(_plate.OwnerId);
+            writer.Write(_plate.platerKitchenobjectSOId);
             writer.Write(_plate.CurrentIngredients.Count);
             foreach (var ing in _plate.CurrentIngredients)
             {
