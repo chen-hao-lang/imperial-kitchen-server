@@ -118,7 +118,7 @@ namespace KitchenChaos_Server
             // 从服务器权威的盘子登记表中取配料数据，不信任客户端上报的配料
             if (!room.TryGetPlateIngredients(_plateId, out List<int> plateIngredients))
             {
-                Console.WriteLine($"[ServerDeliveryManager] 交付失败: 服务器中不存在盘子 {_plateId}");
+                Console.WriteLine($"[ServerDeliveryManager] 交付失败: 盘子上 {_plateId} 没有配料");
                 room.BroadcastAll(NetworkMessage.Create_RecipeFailed());
                 return;
             }
@@ -140,13 +140,6 @@ namespace KitchenChaos_Server
 
                     if (RecipeRegistry.Matches(recipeIndex, plateIngredients))
                     {
-                        if (!isFirstDelivered)// 第一次提交，让游戏开始计时
-                        {
-                            isFirstDelivered = true;
-
-                            room.RoomGameManager.StartGame();
-                        }
-
                         waitingRecipeIndexes.RemoveAt(i);
                         successfulRecipesAmount++;
                         matched = true;
@@ -175,6 +168,15 @@ namespace KitchenChaos_Server
                 room.BroadcastAll(NetworkMessage.Create_RecipeFailed());
                 Console.WriteLine($"[ServerDeliveryManager] 交付失败: 盘子{_plateId} 无匹配订单");
             }
+
+            // 只要提交，不管对错，开始游戏倒计时
+            if (!isFirstDelivered)// 第一次提交，让游戏开始计时
+            {
+                isFirstDelivered = true;
+
+                room.RoomGameManager.StartGame();
+            }
+
         }
     }
 }

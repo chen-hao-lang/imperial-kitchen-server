@@ -953,7 +953,7 @@ namespace KitchenChaos_Server.Room
         /// </summary>
         /// <param name="_plateId">盘子 ID</param>
         /// <param name="_ingredients">输出：盘子当前配料索引列表</param>
-        /// <returns>盘子是否存在</returns>
+        /// <returns>盘子是否有配料</returns>
         public bool TryGetPlateIngredients(int _plateId, out List<int> _ingredients)
         {
             if (plates.TryGetValue(_plateId, out ServerPlate plate))
