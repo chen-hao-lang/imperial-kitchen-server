@@ -24,6 +24,7 @@
     C2S_RegisterContainerItem = 119,
     C2S_RegisterCuttingRecipes = 110,// 切菜配方上报
     C2S_RegisterBoilingRecipes = 111,// 煮菜配方上报
+    C2S_RegisterPlateSpawnId = 112,// 注册操作台生成盘子类型
     C2S_CounterRegister = 108,    // 客户端上报操作台类型映射（连接后首次发送）
 
     // 解析（服务端 → 客户端）
@@ -74,7 +75,7 @@
     C2S_DestroyRoom = 123,        // 房主解散房间
     C2S_RequestRoomList = 125,    // 请求房间列表
     C2S_PlayerReady = 126,        // 玩家准备就绪
-    C2S_StartGame = 127,          // 开始游戏
+    C2S_RequestEnterGameScene = 127,          // 开始游戏
 
     // 解析（服务端 → 客户端）
     RoomCreated = 30,             // 房间创建成功，附带房间号

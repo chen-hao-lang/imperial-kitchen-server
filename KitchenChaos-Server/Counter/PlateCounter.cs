@@ -4,7 +4,7 @@ namespace KitchenChaos_Server.Counter
 {
     public class PlateCounter : BaseCounter
     {
-        public int PlateKitchenObjectSOId { get; }
+        public int PlateKitchenObjectSOId { get; set; }
         public int PlateCount { get; set; }
         /// <summary>盘子生成计时器（秒）</summary>
         public float PlateSpawnTimer { get; set; }

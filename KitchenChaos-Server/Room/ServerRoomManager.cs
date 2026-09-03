@@ -171,7 +171,7 @@ namespace KitchenChaos_Server.Room
                     {
                         // 先查看当前房间的人数是否满足
                         if (rooms[roomId].players.Count == rooms[roomId].MaxPlayer)
-                            rooms[roomId].StartGame();
+                            rooms[roomId].EnterGameScene();
                     }
                 }
             }

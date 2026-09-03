@@ -11,6 +11,10 @@ namespace KitchenChaos_Server.Counter
         public List<int> Ingredients { get; }
 
         /// <summary>
+        /// 煮沸计数器状态：0=空闲, 1=准备中, 2=煮沸中, 3=完成
+        /// </summary>
+        public byte BoilintCounterState { get; set; }
+        /// <summary>
         /// 是否正在煮沸
         /// </summary>
         public bool IsBoiling { get; set; }
@@ -50,6 +54,7 @@ namespace KitchenChaos_Server.Counter
                     if (recipe.inputs.Contains(_ingredientsId))
                     {
                         Ingredients.Add(_ingredientsId);
+                        BoilintCounterState = 1;
                         return true;
                     }
                 }
@@ -70,6 +75,7 @@ namespace KitchenChaos_Server.Counter
                     IsBoiling = true;
                     BoilingTimer = 0f;
                     MaxBoilingTimer = Recipes[i].maxBoilingTimer;
+                    BoilintCounterState = 2;
                     return true;
                 }
             }

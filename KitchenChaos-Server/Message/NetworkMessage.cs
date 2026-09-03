@@ -518,6 +518,15 @@ namespace KitchenChaos_Server.Message
             return (counterId,recipes);
         }
 
+        public static (int, int) Parse_RegisterPlateSpawnId(byte[] _data)
+        {
+            var ms = new MemoryStream(_data);
+            var reader = new BinaryReader(ms);
+            int counterId = reader.ReadInt32();
+            int plateId = reader.ReadInt32();
+            return (counterId,plateId);
+        }
+
         /// <summary>
         /// 解析客户端上报的配方表。
         /// 格式：recipeCount(int) + [ingredientCount(int) + [ingredientIndex(int)]*N] * recipeCount
@@ -541,43 +550,6 @@ namespace KitchenChaos_Server.Message
                 recipes.Add(ingredients);
             }
             return recipes;
-        }
-
-        /// <summary>
-        /// 解析客户端上报的盘子生成请求。
-        /// 格式：clientTempId(int) + ownerType(byte) + ownerId(int) + soIndex(int)
-        /// </summary>
-        public static (int clientTempId, byte ownerType, int ownerId, int soIndex) Parse_PlateSpawnSync(byte[] _body)
-        {
-            var ms = new MemoryStream(_body);
-            var reader = new BinaryReader(ms);
-            int clientTempId = reader.ReadInt32();
-            byte ownerType = reader.ReadByte();
-            int ownerId = reader.ReadInt32();
-            int soIndex = reader.ReadInt32();
-            return (clientTempId, ownerType, ownerId, soIndex);
-        }
-
-        /// <summary>
-        /// 解析客户端上报的盘子持有者变更。
-        /// 格式：plateId(int) + ownerType(byte) + ownerId(int)
-        /// </summary>
-        public static (int plateId, byte ownerType, int ownerId,List<int> ingredients) Parse_PlateOwnerSync(byte[] _body)
-        {
-            var ms = new MemoryStream(_body);
-            var reader = new BinaryReader(ms);
-            int plateId = reader.ReadInt32();
-            byte ownerType = reader.ReadByte();
-            int ownerId = reader.ReadInt32();
-            int counte = reader.ReadInt32();
-
-            List<int> ingredientsList = new List<int>();    
-            while (counte > 0)
-            {
-                ingredientsList.Add(reader.ReadInt32());
-                counte--;
-            }
-            return (plateId, ownerType, ownerId,ingredientsList);
         }
 
         public static (int,int) Parse_RegisterPlateSO(byte[] _body)

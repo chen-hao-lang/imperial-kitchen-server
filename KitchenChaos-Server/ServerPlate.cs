@@ -22,17 +22,18 @@ namespace KitchenChaos_Server
         public int OwnerId { get; set; }
 
         /// <summary>盘子的 KitchenObjectSO 索引（用于远程客户端生成）</summary>
-        public int SoIndex { get; private set; } = -1;
+        public int platerKitchenobjectSOId { get; private set; } = -1;
         public HashSet<int> ValidIngredientIndexes { get; private set; } = new HashSet<int>();
 
-        public ServerPlate(int _plateId)
+        public ServerPlate(int _plateId,int _plateKitchenObjectSOId)
         {
             PlateId = _plateId;
+            platerKitchenobjectSOId = _plateKitchenObjectSOId;
         }
 
         public void SetPlateSO(int _plateSOIndex)
         {
-            SoIndex = _plateSOIndex;
+            platerKitchenobjectSOId = _plateSOIndex;
         }
 
         public bool TryAddIngredient(int _ingredients)

@@ -159,8 +159,8 @@ namespace KitchenChaos_Server
                 case MessageType.C2S_Disconnect:
                     _client.Disconnect();
                     break;
-                case MessageType.C2S_StartGame:
-                    HandleStartGame(_data);
+                case MessageType.C2S_RequestEnterGameScene:
+                    HandleRequestEnterGameScene(_data);
                     break;
                 default:// 其他游戏的内的同步
                     var room = _client.CurrentRoom;
@@ -220,7 +220,11 @@ namespace KitchenChaos_Server
             roomManager.RemoveRoom(_client,roomId);
         }
 
-        private void HandleStartGame(byte[] _data)
+        /// <summary>
+        /// 请求进入游戏场景
+        /// </summary>
+        /// <param name="_data"></param>
+        private void HandleRequestEnterGameScene(byte[] _data)
         {
             var roomId = NetworkMessage.Parse_StartGame(_data);
             // 通知该房间内的所有客户端，转移场景
