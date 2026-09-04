@@ -71,7 +71,7 @@ namespace KitchenChaos_Server
                 {
                     room.BroadcastAll(NetworkMessage.Create_GameStartCD(i));
                     Console.WriteLine($"[ServerGameManager] 开局倒计时: {i}");
-                    await Task.Delay(1000, ct);
+                    await Task.Delay(1000, ct);// 间隔1s
                 }
 
                 GameStata = EGameState.GamePlaying;

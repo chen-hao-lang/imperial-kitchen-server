@@ -1,5 +1,6 @@
 ﻿using KitchenChaos_Server.Counter;
 using KitchenChaos_Server.Message;
+using KitchenChaos_Server.Room;
 using System;
 using System.Collections.Generic;
 
@@ -21,12 +22,12 @@ namespace KitchenChaos_Server
         /// </summary>
         private int cutNeed;
 
-        public List<CuttingRecipeSO> Recipes { get; set; }
+        public List<CuttingRecipeSO> Recipes { get; private set; }
 
         /// <summary>
         /// 切完没有
         /// </summary>
-        public bool IsCutEnd { get; set; }
+        public bool IsCutEnd { get; private set; }
 
         /// <summary>
         /// 切菜进度归一化值
@@ -34,9 +35,30 @@ namespace KitchenChaos_Server
         public float CuttingProgressNormalized =>
             cutNeed > 0 ? (float)cutCount / cutNeed : 0f;
 
-        public CuttingCounter(int _counterId, CounterType _type = CounterType.ClearCounter) : base(_counterId, _type)
-        { 
-            
+        public CuttingCounter(ServerRoom _room, int _counterId, CounterType _type) : base(_room, _counterId, _type) { }
+
+        public void SetRecipes(List<CuttingRecipeSO> _recipes) => Recipes = _recipes;
+
+        public override void OnPlayerInteract(ServerPlayer _player)
+        {
+            CounterInteractionHelper.PlaceOrTakeItem(this,_player);
+        }
+
+        public override void OnPlayerInteractAlternate(ServerPlayer _player)
+        {
+            if (ItemIndex < 0) return;
+            if (!CanCat(ItemIndex)) return;
+
+            float progress = Cut(ItemIndex);   // 先取进度再广播（原来完成那刀广播 0）
+
+            Room.BroadcastAll(NetworkMessage.Create_CounterProgressSync(CounterId, progress));
+            Console.WriteLine($"[GameServer] CuttingCounter {CounterId} 切菜进度: {progress}");
+
+            if (IsCutEnd)
+            {
+                Room.BroadcastAll(NetworkMessage.Create_InteractionSync(CounterId, ItemIndex, -1, -1));
+                Room.BroadcastAll(NetworkMessage.Create_CounterProgressSync(CounterId, 1.0f));
+            }
         }
 
         public bool CanCat(int _input) => TryGetCuttingRecipe(_input, out _);

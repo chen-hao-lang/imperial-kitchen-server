@@ -1,5 +1,4 @@
-﻿using KitchenChaos_Server.Counter;
-using KitchenChaos_Server.Message;
+﻿using KitchenChaos_Server.Message;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,13 +18,7 @@ namespace KitchenChaos_Server.Room
 
         public Dictionary<int,ServerPlayer> players;
 
-        private bool countersInitialized = false;
-
-        /// <summary>
-        /// key:counterId
-        /// value:counter
-        /// </summary>
-        public Dictionary<int,BaseCounter> counters;
+        public ServerCounterManager CounterManager { get; private set; }
 
         private int nextPlateId;
         public Dictionary<int,ServerPlate> plates;
@@ -70,10 +63,10 @@ namespace KitchenChaos_Server.Room
 
             clients = new List<ServerClient>();
             players = new Dictionary<int, ServerPlayer>();
-            counters = new Dictionary<int, BaseCounter>();
             plates = new Dictionary<int, ServerPlate>();
 
             gameCts = new CancellationTokenSource();
+            CounterManager = new ServerCounterManager(this);
             RoomGameManager = new ServerGameManager(this, gameCts.Token);
             RoomDeliveryManager = new ServerDeliveryManager(this);
 
@@ -204,7 +197,7 @@ namespace KitchenChaos_Server.Room
                 }
                 clients.Clear();
                 players.Clear();
-                counters.Clear();
+                CounterManager.Clear();
                 plates.Clear();
             }
         }
@@ -225,7 +218,8 @@ namespace KitchenChaos_Server.Room
                     lock (stateLock)
                     {
                         RoomDeliveryManager.Update(deltaTime);
-                        UpdateCounters(deltaTime);
+                        //UpdateCounters(deltaTime);
+                        CounterManager.UpdateAll(deltaTime);
                     }
                     await Task.Delay((int)(COUNTER_TICK_INTERVAL * 1000), _ct);
                 }
@@ -240,125 +234,6 @@ namespace KitchenChaos_Server.Room
             }
 
             Console.WriteLine("[GameServer] 操作台更新循环已停止");
-        }
-
-        /// <summary>
-        /// 每帧更新所有操作台
-        /// </summary>
-        private void UpdateCounters(float _deltaTime)
-        { 
-            foreach (var counter in counters.Values)
-            {
-                if (counter.Type == CounterType.BoilingCounter && counter is BoilingCounter boilingCounter)
-                {
-                    // 如果这个煮沸台当前没有在煮，则跳过该台的后续处理（不要 return，会中断对所有台的更新）
-                    if (!boilingCounter.IsBoiling) continue;
-
-                    boilingCounter.BoilingTimer += _deltaTime;
-                    float progress = boilingCounter.BoilingProgressNormalized;
-
-                    // 广播煮沸进度给所有客户端
-                    BroadcastAll(NetworkMessage.Create_CounterProgressSync(boilingCounter.CounterId, progress));
-
-                    // 煮沸完成
-                    if (boilingCounter.BoilingTimer >= boilingCounter.MaxBoilingTimer)
-                    {
-                        boilingCounter.IsBoiling = false;
-                        boilingCounter.BoilingTimer = 0f;
-                        boilingCounter.BoilintCounterState = 3;
-
-                        if (boilingCounter.ActiveRecipeIndex >= 0
-                            && boilingCounter.Recipes != null
-                            && boilingCounter.ActiveRecipeIndex < boilingCounter.Recipes.Count)
-                        {
-                            boilingCounter.ItemIndex = boilingCounter.Recipes[boilingCounter.ActiveRecipeIndex].output;
-                        }
-                        boilingCounter.Ingredients.Clear();
-                        boilingCounter.ActiveRecipeIndex = -1;
-
-                        Console.WriteLine($"[GameServer] BoilingCounter {boilingCounter.CounterId} 煮沸完成 → 物品{boilingCounter.ItemIndex}");
-
-                        BroadcastAll(NetworkMessage.Create_CounterProgressSync(boilingCounter.CounterId, 1.0f));
-                        BroadcastAll(NetworkMessage.Create_InteractionSync(boilingCounter.CounterId, boilingCounter.ItemIndex, -1, -1));
-                        BroadcastAll(NetworkMessage.Create_CounterStateSync(boilingCounter.CounterId, boilingCounter.BoilintCounterState));
-                    }
-                    continue;
-                }
-
-                if (counter.Type == CounterType.PlateCounter && counter is PlateCounter plateCounter)
-                {
-                    plateCounter.PlateSpawnTimer += _deltaTime;
-                    if (plateCounter.PlateSpawnTimer >= plateCounter.PLATE_SPAWN_INTERVAL)
-                    {
-                        plateCounter.PlateSpawnTimer = 0f;
-                        if (plateCounter.PlateCount < plateCounter.PLATE_MAX)
-                        {
-                            plateCounter.PlateCount++;
-                            plateCounter.Plates.Add(nextPlateId);
-
-                            // 生成一个新的盘子（初始持有者是当前 PlateCounter）
-                            ServerPlate newPlate = new ServerPlate(nextPlateId, plateCounter.PlateKitchenObjectSOId)
-                            {
-                                OwnerType = 1,                    // 操作台
-                                OwnerId = plateCounter.CounterId,  // 当前 PlateCounter
-                            };
-                            if (!plates.ContainsValue(newPlate))
-                            {
-                                plates.Add(newPlate.PlateId,newPlate);
-                            }
-                            Console.WriteLine($"[GameServer] PlateCounter {plateCounter.CounterId} 生成盘子，当前数量={plateCounter.PlateCount}");
-
-                            BroadcastAll(NetworkMessage.Create_PlateSpawned(plateCounter.CounterId, newPlate.PlateId));
-                            nextPlateId++;
-                        }
-                    }
-                    continue;
-                }
-            }
-        }
-
-        /// <summary>
-        /// 发送全量更新
-        /// </summary>
-        private void SendFullSyncToClient(ServerClient _targetClient)
-        {
-            lock (stateLock)
-            {
-                var playersList = new List<(int id, string name, float x, float y, float z, float rotY)>();
-                foreach (var c in clients)
-                {
-                    if (c != _targetClient)
-                    {
-                        playersList.Add((c.Player.PlayerId, $"玩家{c.Player.PlayerId}", c.Player.LastPosX, c.Player.LastPosY, c.Player.LastPosZ, c.Player.LastRotY));
-                    }
-                }
-
-                var countersList = new (int counterId, int itemIndex)[this.counters.Count];
-                int i = 0;
-                foreach (var kv in this.counters.Values)
-                {
-                    countersList[i] = (kv.CounterId, kv.ItemIndex);
-                    i++;
-                }
-
-                // 收集所有盘子
-                var platesList = new (int plateId, byte ownerType, int ownerId, int soIndex, List<int> ingredients)[plates.Count];
-                int j = 0;
-                foreach (var kv in plates.Values)
-                {
-                    platesList[j] = (kv.PlateId, kv.OwnerType, kv.OwnerId, kv.platerKitchenobjectSOId, kv.CurrentIngredients);
-                    j++;
-                }
-
-                // 收集等待中的订单（服务器权威，中途加入的玩家恢复订单状态）
-                int[] recipeIndexes = RoomDeliveryManager?.GetWaitingRecipeIndexes() ?? new int[0];
-
-                _targetClient.Send(NetworkMessage.Create_FullSync(
-                    playersList.ToArray(),
-                    countersList,
-                    platesList,
-                    recipeIndexes));
-            }
         }
 
         /// <summary>
@@ -377,53 +252,14 @@ namespace KitchenChaos_Server.Room
         /// </summary>
         private void ProcessGameMessage(ServerClient _sender, MessageType _type, byte[] _data)
         {
-            if (_type == MessageType.C2S_RegisterContainerItem)
+            // 操作台注册类消息（容器物品/切菜配方/煮菜配方/盘子SO/蒸制配方）→ CounterManager
+            if (_type == MessageType.C2S_RegisterContainerItem
+                || _type == MessageType.C2S_RegisterCuttingRecipes
+                || _type == MessageType.C2S_RegisterBoilingRecipes
+                || _type == MessageType.C2S_RegisterPlateSpawnId
+                || _type == MessageType.C2S_RegisterStreamingRecipes)
             {
-                var (ctId, soIndex) = NetworkMessage.Parse_RegisterContainerItem(_data);
-                if (counters.TryGetValue(ctId, out var ct))
-                {
-                    ct.ContainerSOId = soIndex;
-                    Console.WriteLine($"[GameServer] 容器{ctId} 注册固定物品: {soIndex}");
-                }
-                return;
-            }
-
-            if (_type == MessageType.C2S_RegisterCuttingRecipes)
-            {
-                var (counterId, cuttingRecipes) = NetworkMessage.Parse_RegisterCuttingRecipes(_data);
-                if (counters.TryGetValue(counterId, out BaseCounter counter))
-                {
-                    if (counter.Type == CounterType.CuttingCounter && counter is CuttingCounter cuttingCounter)
-                    {
-                        cuttingCounter.Recipes = cuttingRecipes;
-                    }
-                }
-                return;
-            }
-
-            if (_type == MessageType.C2S_RegisterBoilingRecipes)
-            {
-                var (counterId, recipes) = NetworkMessage.Parse_RegisterBoilingRecipes(_data);
-                if (counters.TryGetValue(counterId, out BaseCounter counter))
-                {
-                    if (counter.Type == CounterType.BoilingCounter && counter is BoilingCounter boilingCounter)
-                    {
-                        boilingCounter.Recipes = recipes;
-                    }
-                }
-                return;
-            }
-
-            if (_type == MessageType.C2S_RegisterPlateSpawnId)
-            {
-                var (counterId, plateId) = NetworkMessage.Parse_RegisterPlateSpawnId(_data);
-                if (counters.TryGetValue(counterId, out BaseCounter counter))
-                {
-                    if (counter.Type == CounterType.PlateCounter && counter is PlateCounter plateCounter)
-                    {
-                        plateCounter.PlateKitchenObjectSOId = plateId;
-                    }
-                }
+                CounterManager.HandleRegisterMessage(_type, _data);
                 return;
             }
 
@@ -442,7 +278,7 @@ namespace KitchenChaos_Server.Room
                     HandleInteractAlternate(_sender, _data);
                     break;
                 case MessageType.C2S_CounterRegister:// 成功
-                    HandleCounterRegister(_sender, _data);
+                    CounterManager.HandleCounterRegister(_data);
                     break;
                 case MessageType.C2S_RegisterPlateSO:// 成功
                     HandleRegisterPlateSO(_sender, _data);
@@ -495,298 +331,18 @@ namespace KitchenChaos_Server.Room
         }
         
         /// <summary>
-        /// 注册当前房间内的操作台
-        /// </summary>
-        /// <param name="_sender"></param>
-        /// <param name="_data"></param>
-        private void HandleCounterRegister(ServerClient _sender, byte[] _data)
-        {
-            if (countersInitialized)
-            {
-                Console.WriteLine("[GameServer] 操作台已初始化，忽略重复上报");
-                return;
-            }
-
-            var mapping = NetworkMessage.Parse_CounterRegister(_data);
-            counters.Clear();
-
-            foreach (var (counterId, typeByte) in mapping)
-            {
-                var type = (CounterType)typeByte;
-
-                switch (type)
-                {
-                    case CounterType.PlateCounter:
-                        counters.Add(counterId, new PlateCounter(counterId, type) { PlateCount = 0, PlateSpawnTimer = 0f });
-                        break;
-                    case CounterType.BoilingCounter:
-                        counters.Add(counterId, new BoilingCounter(counterId, type));
-                        break;
-                    case CounterType.CuttingCounter:
-                        counters.Add(counterId, new CuttingCounter(counterId, type));
-                        break;
-                    default:
-                        counters.Add(counterId, new BaseCounter(counterId, type));// Clear/Container/Trash/Delivery
-                        break;
-                }
-
-                Console.WriteLine($"[GameServer] 注册操作台: ID={counterId}, 类型={type}");
-            }
-
-            countersInitialized = true;
-            Console.WriteLine($"[GameServer] 操作台类型映射初始化完成，共 {counters.Count} 个");
-        }
-
-        /// <summary>
         /// 处理玩家交互
         /// </summary>
         private void HandlePlayerInteract(ServerClient _sender, byte[] _data) 
         {
             var (playerId,counterId) = NetworkMessage.Parse_PlayerInteract(_data);
-            ServerPlayer player = _sender.Player;
-
-            if (!counters.TryGetValue(counterId, out var counter))
-                return;
-
-            if (counter is BaseCounter)
-            {
-                if (counter.Type == CounterType.ContainerCounter)// 如果玩家与容器交互
-                {
-                    if (player.HeldItemIndex == -1)// 如果玩家手里没东西
-                    {
-                        if (counter.ContainerSOId < 0)// 未注册固定物品
-                        {
-                            Console.WriteLine($"[GameServer] 容器{counter.CounterId} 未注册固定物品，忽略取货");
-                            return;
-                        }
-
-                        player.HeldItemIndex = counter.ContainerSOId;// 将容器里的东西给玩家
-                        BroadcastAll(NetworkMessage.Create_InteractionSync(-1, -1, player.PlayerId, player.HeldItemIndex));// 网络同步
-                    }
-                    return;
-                }
-
-                if (counter.Type == CounterType.ClearCounter)
-                {
-                    HandleClearCounterInteract(counter, player);
-                    return;
-                }
-
-                // 与垃圾桶交互
-                if (counter.Type == CounterType.TrashCounter)
-                {
-                    if (player.HeldItemIndex != -1 && !TryGetPlateByOwner(player.PlayerId, out _))
-                    {
-                        player.HeldItemIndex = -1;
-                        BroadcastAll(NetworkMessage.Create_InteractionSync(counter.CounterId, -1, player.PlayerId, -1));
-                    }
-                    return;
-                }
-
-                // 和交付台交互
-                if (counter.Type == CounterType.DeliveryCounter)
-                {
-                    if (TryGetPlateByOwner(player.PlayerId, out var plate))
-                        HandleDeliveryRequest(player, plate.PlateId);
-                }
-            }
-
-            if (counter is CuttingCounter cuttingCounter)
-            {
-                // 与切菜台 和 桌子交互
-                if (counter.Type == CounterType.CuttingCounter)
-                {
-                    HandleClearCounterInteract(cuttingCounter, player);
-                    return;
-                }
-            }
-
-            if (counter is BoilingCounter boilingCounter)
-            {
-                // 与煮器 交互
-                if (counter.Type == CounterType.BoilingCounter)
-                {
-                    HandleBoilingCounterInteract(boilingCounter, player);
-                    return;
-                }
-            }
-            
-            if (counter is PlateCounter plateCounter)
-            {
-                if (counter.Type == CounterType.PlateCounter)
-                {
-                    HandlePlateCounterInteract(plateCounter, player);
-                }
-            }
+            CounterManager.HandlePlayerInteract(_sender.Player,counterId);
         }
         #region HandlePlayerInteract
         /// <summary>
-        /// 处理八仙桌、砍台的逻辑
-        /// </summary>
-        /// <param name="_counter"></param>
-        /// <param name="_player"></param>
-        private void HandleClearCounterInteract(BaseCounter _counter, ServerPlayer _player)
-        {
-            // 检查操作台上有没有盘子
-            bool counterHasPlate = TryGetPlateOnCounter(_counter.CounterId, out ServerPlate plateOnCounter);
-
-            if (_counter.ItemIndex == -1 && !counterHasPlate)// 台子上面什么都没有
-            {
-                if (_player.HeldItemIndex == -1) return;// 玩家手里也没东西，直接返回
-
-                // 玩家手里有东西
-                if (TryGetPlateByOwner(_player.PlayerId, out var heldPlate))// 玩家手里有盘子
-                {
-                    // 将玩家手里的盘子放到操作台上
-                    heldPlate.OwnerType = 1;
-                    heldPlate.OwnerId = _counter.CounterId;
-
-                    _counter.ItemIndex = heldPlate.platerKitchenobjectSOId;
-
-                    BroadcastAll(NetworkMessage.Create_PlateOwnerSync(heldPlate));
-                }
-                else// 配料
-                {
-                    _counter.ItemIndex = _player.HeldItemIndex;
-                }
-
-                _player.HeldItemIndex = -1;
-                BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId,_counter.ItemIndex,_player.PlayerId,_player.HeldItemIndex));
-                return;
-            }
-
-            if (counterHasPlate)// 如果台子上是盘子
-            {
-                if (_player.HeldItemIndex == -1)// 玩家手里没东西
-                {
-                    plateOnCounter.OwnerType = 0;// 把盘子给玩家
-                    plateOnCounter.OwnerId = _player.PlayerId;
-
-                    _player.HeldItemIndex = plateOnCounter.platerKitchenobjectSOId;
-                    _counter.ItemIndex = -1;    
-
-                    BroadcastAll(NetworkMessage.Create_PlateOwnerSync(plateOnCounter));
-                    BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId,_counter.ItemIndex,_player.PlayerId,_player.HeldItemIndex));
-                }
-                else if(!TryGetPlateByOwner(_player.PlayerId,out var plateOnPlayer))// 玩家手里有配料
-                {
-                    int ing = _player.HeldItemIndex;
-                    // 将操作台上的配料放到盘子上
-                    if (plateOnCounter.TryAddIngredient(ing))
-                    {
-                        BroadcastAll(NetworkMessage.Create_PlateAddIngredient(plateOnCounter.PlateId, ing));
-
-                        _player.HeldItemIndex = -1;
-                        BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, -1, _player.PlayerId, -1));
-                    }
-                }
-
-                return;
-            }
-
-            // 玩家手里没东西，操作台上有东西，玩家拿起操作台上的东西
-            if (_player.HeldItemIndex == -1)
-            {
-                // 玩家拿起台上的普通物
-                _player.HeldItemIndex = _counter.ItemIndex;
-                _counter.ItemIndex = -1;
-                BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, -1, _player.PlayerId, _player.HeldItemIndex));
-            }
-            else if (TryGetPlateByOwner(_player.PlayerId, out var heldPlate2))// 玩家手里有盘子，把操作台上的配料加到玩家手里的盘子上
-            {
-                if (heldPlate2.TryAddIngredient(_counter.ItemIndex))
-                {
-                    int ing = _counter.ItemIndex;
-                    _counter.ItemIndex = -1;
-                    BroadcastAll(NetworkMessage.Create_PlateAddIngredient(heldPlate2.PlateId, ing));
-                    BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, _counter.ItemIndex, _player.PlayerId, -1));
-                }
-            }
-
-        }
-
-        private void HandleBoilingCounterInteract(BoilingCounter _counter, ServerPlayer _player)
-        {
-            // 锅里没东西
-            if (_counter.ItemIndex == -1 && !_counter.IsBoiling)
-            {
-                if (TryGetPlateByOwner(_player.PlayerId, out var heldPlate))// 如果玩家手里有盘子
-                {
-                    foreach (var ingredients in new List<int>(heldPlate.CurrentIngredients))   // 副本遍历，边遍历边删
-                    {
-                        if (_counter.TryAddIngredients(ingredients))
-                        {
-                            heldPlate.TryRemoveIngredient(ingredients);
-                            BroadcastAll(NetworkMessage.Create_PlateRemoveIngredient(heldPlate.PlateId, ingredients));
-                            BroadcastAll(NetworkMessage.Create_CounterAddIngredient(_counter.CounterId,ingredients));
-                        }
-                    }
-                }
-                else if (_player.HeldItemIndex != -1)// 如果玩家手里是配料
-                {
-                    // 玩家持普通物 → 加进锅
-                    int ingredients = _player.HeldItemIndex;
-                    if (_counter.TryAddIngredients(ingredients))
-                    {
-                        _player.HeldItemIndex = -1;
-                        BroadcastAll(NetworkMessage.Create_CounterAddIngredient(_counter.CounterId, ingredients));
-                    }
-                }
-
-                if (_counter.TryStartBoiling())
-                {
-                    BroadcastAll(NetworkMessage.Create_CounterStateSync(_counter.CounterId, _counter.BoilintCounterState));
-                    Console.WriteLine($"[GameServer] BoilingCounter {_counter.CounterId} 开始煮沸: 配方{_counter.ActiveRecipeIndex}, 时长={_counter.MaxBoilingTimer:F1}s");
-                }
-
-                BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, -1, _player.PlayerId, -1));
-                return;
-            }
-
-            // 锅里面有成品，装盘
-            if (_counter.ItemIndex != -1 && TryGetPlateByOwner(_player.PlayerId, out var plateOnPlayer))
-            {
-                if (plateOnPlayer.TryAddIngredient(_counter.ItemIndex))
-                {
-                    int outIdx = _counter.ItemIndex;
-                    _counter.ItemIndex = -1;
-                    _counter.Ingredients.Clear(); // 清空锅里的配料
-                    _counter.IsBoiling = false;
-                    _counter.BoilintCounterState = 0;
-                    BroadcastAll(NetworkMessage.Create_PlateAddIngredient(plateOnPlayer.PlateId, outIdx));
-                    BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, -1, _player.PlayerId, -1));
-                    BroadcastAll(NetworkMessage.Create_CounterStateSync(_counter.CounterId,_counter.BoilintCounterState));
-                }
-            }
-        }
-
-        private void HandlePlateCounterInteract(PlateCounter _counter, ServerPlayer _player)
-        {
-            if (_player.HeldItemIndex != -1) return;// 玩家手里有东西，直接退出
-            if (_counter.Plates.Count == 0) return;// 操作台上没盘子，也直接退出
-
-            // 拿走盘子
-            int plateId = _counter.Plates[_counter.Plates.Count - 1];
-            _counter.Plates.RemoveAt(_counter.Plates.Count - 1);
-            _counter.PlateCount--;
-
-            if (!plates.TryGetValue(plateId, out var plate)) return;
-
-            plate.OwnerType = 0; 
-            plate.OwnerId = _player.PlayerId;
-
-            _player.HeldItemIndex = _counter.PlateKitchenObjectSOId;
-
-            // 网络广播
-            BroadcastAll(NetworkMessage.Create_PlateOwnerSync(plate));// 实体归玩家
-            BroadcastAll(NetworkMessage.Create_RemotePlate(_counter.CounterId, plateId));
-            //BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, -1, _player.PlayerId, _player.HeldItemIndex));
-        }
-
-        /// <summary>
         /// 处理客户端提交的交付请求：转交给服务器权威的订单管理器校验并广播结果。
         /// </summary>
-        private void HandleDeliveryRequest(ServerPlayer _player,int _plateId)
+        public void HandleDeliveryRequest(ServerPlayer _player,int _plateId)
         {
             RoomDeliveryManager?.HandleDeliveryRequest(_plateId);   // 已有：校验 + DestroyPlate + 广播
 
@@ -804,7 +360,7 @@ namespace KitchenChaos_Server.Room
         /// <param name="_playerId"></param>
         /// <param name="_plate"></param>
         /// <returns></returns>
-        private bool TryGetPlateByOwner(int _playerId, out ServerPlate _plate)
+        public bool TryGetPlateByOwner(int _playerId, out ServerPlate _plate)
         {
             foreach (var plate in plates.Values)
             {
@@ -825,7 +381,7 @@ namespace KitchenChaos_Server.Room
         /// <param name="_counterId"></param>
         /// <param name="_plate"></param>
         /// <returns></returns>
-        private bool TryGetPlateOnCounter(int _counterId, out ServerPlate _plate)
+        public bool TryGetPlateOnCounter(int _counterId, out ServerPlate _plate)
         {
             foreach (var plate in plates.Values)
             {
@@ -847,40 +403,7 @@ namespace KitchenChaos_Server.Room
         private void HandleInteractAlternate(ServerClient _sender, byte[] _data)
         {
             int counterId = NetworkMessage.Parse_InteractAlternate(_data);
-            ServerPlayer player = _sender.Player;
-
-            if (!counters.TryGetValue(counterId, out var counter))
-                return;
-
-            Console.WriteLine($"[GameServer] 玩家{_sender.Player.PlayerId} 副交互: 台子{counterId} 类型={counter.Type}");
-
-            if (counter is CuttingCounter cuttingCounter)
-            {
-                if (counter.Type == CounterType.CuttingCounter)
-                {
-                    HandleCuttingInteractAlternate(cuttingCounter);
-                }
-            }
-        }
-
-        /// <summary>
-        /// 处理切菜操作台的副交互
-        /// </summary>
-        private void HandleCuttingInteractAlternate(CuttingCounter _counter)
-        {
-            if (_counter.ItemIndex < 0) return;
-            if (!_counter.CanCat(_counter.ItemIndex)) return;
-
-            float progress = _counter.Cut(_counter.ItemIndex);// 先取进度再广播（原来完成那刀广播 0）
-
-            BroadcastAll(NetworkMessage.Create_CounterProgressSync(_counter.CounterId, progress));
-            Console.WriteLine($"[GameServer] CuttingCounter {_counter.CounterId} 切菜进度: {progress}");
-
-            if (_counter.IsCutEnd)
-            {
-                BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, _counter.ItemIndex, -1, -1));
-                BroadcastAll(NetworkMessage.Create_CounterProgressSync(_counter.CounterId, 1.0f));
-            }
+            CounterManager.HandlePlayerInteractAlternate(_sender.Player, counterId);
         }
 
         private void HandleRegisterPlateSO(ServerClient _sender, byte[] _data) 
@@ -964,6 +487,23 @@ namespace KitchenChaos_Server.Room
 
             _ingredients = null;
             return false;
+        }
+
+        public bool TryGetPlate(int _plateId, out ServerPlate _plate)
+        {
+            return plates.TryGetValue(_plateId, out _plate);
+        }
+
+        public ServerPlate SpawnPlateOnCounter(int _plateSOId, int _ownerCounterId)
+        {
+            ServerPlate newPlate = new ServerPlate(nextPlateId, _plateSOId)
+            {
+                OwnerType = 1,                     // 操作台
+                OwnerId = _ownerCounterId,
+            };
+            nextPlateId++;
+            plates.Add(newPlate.PlateId, newPlate);
+            return newPlate;
         }
 
         public List<ServerPlayer> GetRoomPlayerInfo()

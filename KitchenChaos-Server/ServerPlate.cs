@@ -11,6 +11,7 @@ namespace KitchenChaos_Server
     {
         /// <summary>服务器分配的全局唯一盘子ID</summary>
         public int PlateId { get; }
+        public int CounterId { get; private set; }
 
         /// <summary>盘子上的配料索引列表</summary>
         public List<int> CurrentIngredients { get; private set; } = new List<int>();
@@ -25,10 +26,18 @@ namespace KitchenChaos_Server
         public int platerKitchenobjectSOId { get; private set; } = -1;
         public HashSet<int> ValidIngredientIndexes { get; private set; } = new HashSet<int>();
 
-        public ServerPlate(int _plateId,int _plateKitchenObjectSOId)
+        public ServerPlate(int _plateId,int _plateKitchenObjectSOId,int _counterId)
         {
             PlateId = _plateId;
             platerKitchenobjectSOId = _plateKitchenObjectSOId;
+            CounterId = _counterId;
+        }
+
+        public ServerPlate(int _plateKitchenObjectSOId, int _counterId)
+        {
+            //PlateId = _plateId;
+            platerKitchenobjectSOId = _plateKitchenObjectSOId;
+            CounterId = _counterId;
         }
 
         public void SetPlateSO(int _plateSOIndex)

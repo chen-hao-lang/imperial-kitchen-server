@@ -25,6 +25,7 @@
     C2S_RegisterCuttingRecipes = 110,// 切菜配方上报
     C2S_RegisterBoilingRecipes = 111,// 煮菜配方上报
     C2S_RegisterPlateSpawnId = 112,// 注册操作台生成盘子类型
+    C2S_RegisterStreamingRecipes = 114,
     C2S_CounterRegister = 108,    // 客户端上报操作台类型映射（连接后首次发送）
 
     // 解析（服务端 → 客户端）

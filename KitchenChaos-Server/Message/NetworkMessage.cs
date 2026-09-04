@@ -519,6 +519,25 @@ namespace KitchenChaos_Server.Message
             return (counterId,recipes);
         }
 
+        public static (int,List<StreamingRecipeSO>) Parse_RegisterStreamingRecipes(byte[] _data)
+        {
+            var ms = new MemoryStream(_data);
+            var reader = new BinaryReader(ms);
+            int counterId = reader.ReadInt32();
+            int count = reader.ReadInt32();
+            List<StreamingRecipeSO> recipes = new List<StreamingRecipeSO>();
+            for (int i = 0; i < count; i++)
+            {
+                StreamingRecipeSO so = new StreamingRecipeSO(
+                    reader.ReadInt32(),// 读取inputs
+                    reader.ReadInt32(),// 读取outputs
+                    reader.ReadSingle()// 需要需要砍几刀
+                    );
+                recipes.Add(so);
+            }
+            return (counterId, recipes);
+        }   
+
         public static (int, int) Parse_RegisterPlateSpawnId(byte[] _data)
         {
             var ms = new MemoryStream(_data);
