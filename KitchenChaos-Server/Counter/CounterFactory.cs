@@ -1,10 +1,5 @@
 ﻿using KitchenChaos_Server.Room;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace KitchenChaos_Server.Counter
 {
@@ -23,7 +18,7 @@ namespace KitchenChaos_Server.Counter
                 case CounterType.BoilingCounter:
                     return new BoilingCounter(_room, _counterId, _counterType);
                 case CounterType.PlateCounter:
-                    return new PlateCounter(_room, _counterId, _counterType) { PlateCount = 0, PlateSpawnTimer = 0f };
+                    return new PlateCounter(_room, _counterId, _counterType);
                 case CounterType.TrashCounter:
                     return new TrashCounter(_room, _counterId, _counterType);
                 case CounterType.DeliveryCounter:

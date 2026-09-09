@@ -4,7 +4,7 @@ using KitchenChaos_Server.Room;
 using System;
 using System.Collections.Generic;
 
-namespace KitchenChaos_Server
+namespace KitchenChaos_Server.Manager
 {
     public class ServerCounterManager
     {
@@ -13,6 +13,9 @@ namespace KitchenChaos_Server
         private bool initialized;
 
         public int Count => counters.Count;
+
+        /// <summary>操作台类型映射是否已初始化（房主是否已上报台子）</summary>
+        public bool IsInitialized => initialized;
 
         public ServerCounterManager(ServerRoom _room)
         {

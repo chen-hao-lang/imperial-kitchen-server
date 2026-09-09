@@ -17,12 +17,16 @@ namespace KitchenChaos_Server
         public int HeldItemIndex { get; set; } = -1;
 
         public bool IsReady { get; set; }
-        public ServerClient client { get; }
+        public ServerClient client { get; private set; }
 
         public ServerPlayer(int _playerId, ServerClient _client)
         {
             PlayerId = _playerId;
             client = _client;
         }
+
+        // 断线重连（D7）已暂时禁用
+        ///// <summary>重连认领时把玩家对象重新绑定到新连接（D7）</summary>
+        //public void AttachClient(ServerClient _client) => client = _client;
     }
 }

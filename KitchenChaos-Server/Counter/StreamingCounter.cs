@@ -79,7 +79,7 @@ namespace KitchenChaos_Server.Counter
             // ── 笼内无成品、且当前没在蒸制：允许放入原料 ──
             if (ItemIndex == -1 && !IsSteaming)
             {
-                if (Room.TryGetPlateByOwner(_player.PlayerId, out var heldPlate))   // 玩家手持盘子（倒入盘中生料）
+                if (Room.ServerPlateManager.TryGetPlateByOwner(_player.PlayerId, out var heldPlate))   // 玩家手持盘子（倒入盘中生料）
                 {
                     foreach (var ingredients in new List<int>(heldPlate.CurrentIngredients))   // 副本遍历
                     {
@@ -114,7 +114,7 @@ namespace KitchenChaos_Server.Counter
             }
 
             // ── 笼内有成品：装盘 ──
-            if (ItemIndex != -1 && Room.TryGetPlateByOwner(_player.PlayerId, out var plateOnPlayer))
+            if (ItemIndex != -1 && Room.ServerPlateManager.TryGetPlateByOwner(_player.PlayerId, out var plateOnPlayer))
             {
                 if (plateOnPlayer.TryAddIngredient(ItemIndex))
                 {

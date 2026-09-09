@@ -1,4 +1,5 @@
-﻿using KitchenChaos_Server.Room;
+﻿using KitchenChaos_Server.Message;
+using KitchenChaos_Server.Room;
 
 namespace KitchenChaos_Server.Counter
 {
@@ -17,6 +18,9 @@ namespace KitchenChaos_Server.Counter
                 return;
 
             _player.HeldItemIndex = ContainerSOId;
+
+            // 广播交互结果
+            Room.BroadcastAll(NetworkMessage.Create_InteractionSync(CounterId,ItemIndex,_player.PlayerId,_player.HeldItemIndex));
         }
     }
 }

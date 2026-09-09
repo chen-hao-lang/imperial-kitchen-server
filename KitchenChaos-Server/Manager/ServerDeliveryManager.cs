@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using KitchenChaos_Server.Message;
 using KitchenChaos_Server.Room;
 
-namespace KitchenChaos_Server
+namespace KitchenChaos_Server.Manager
 {
 
     public class ServerDeliveryManager
@@ -21,7 +21,7 @@ namespace KitchenChaos_Server
         private const float SPAWN_RECIPE_INTERVAL = 4f;
         private const int MAX_WAITING_RECIPES = 4;
 
-        private bool isFirstDelivered = false;
+        private bool isFirstDeliveryed = false;    
 
         public ServerDeliveryManager(ServerRoom _room)
         {
@@ -61,12 +61,20 @@ namespace KitchenChaos_Server
                 spawnRecipeTimer = 0f;
             }
 
-            //TrySpawnRecipe();
             Console.WriteLine("[ServerDeliveryManager] 新一局开始，订单与分数已重置");
         }
 
+        public void Clear()
+        {
+            waitingRecipeIndexes.Clear();
+            successfulRecipesAmount = 0;
+            isFirstDeliveryed = false;
+            spawnRecipeTimer = 0;
+        }
+
         /// <summary>
-        /// 每帧更新（仅游戏进行中被 GameServer 调用）：按间隔生成新订单。
+        /// 每帧更新（仅游戏进行中被 ServerRoom 调用）：按间隔生成新订单。
+        /// 保留 timer=0，进入 GamePlaying 第一帧立即生成第一单。
         /// </summary>
         /// <param name="_deltaTime">帧间隔（秒）</param>
         public void Update(float _deltaTime)
@@ -115,8 +123,15 @@ namespace KitchenChaos_Server
         /// <param name="_plateId">客户端提交的盘子 ID</param>
         public void HandleDeliveryRequest(int _plateId)
         {
+            // 交付第一单时，开始游戏倒计时
+            if (!isFirstDeliveryed)
+            {
+                isFirstDeliveryed = true;
+                room.RoomGameManager.SetGameState(EGameState.CDToStart);
+            }
+
             // 从服务器权威的盘子登记表中取配料数据，不信任客户端上报的配料
-            if (!room.TryGetPlateIngredients(_plateId, out List<int> plateIngredients))
+            if (!room.ServerPlateManager.TryGetPlateIngredients(_plateId, out List<int> plateIngredients))
             {
                 Console.WriteLine($"[ServerDeliveryManager] 交付失败: 盘子上 {_plateId} 没有配料");
                 room.BroadcastAll(NetworkMessage.Create_RecipeFailed());
@@ -161,20 +176,12 @@ namespace KitchenChaos_Server
             }
 
             // DeliveryCounter 一定会消费盘子：无论成功失败都销毁
-            room.DestroyPlate(_plateId);
+            room.ServerPlateManager.DestroyPlate(_plateId);
 
             if (!matched)
             {
                 room.BroadcastAll(NetworkMessage.Create_RecipeFailed());
                 Console.WriteLine($"[ServerDeliveryManager] 交付失败: 盘子{_plateId} 无匹配订单");
-            }
-
-            // 只要提交，不管对错，开始游戏倒计时
-            if (!isFirstDelivered)// 第一次提交，让游戏开始计时
-            {
-                isFirstDelivered = true;
-
-                room.RoomGameManager.StartGame();
             }
 
         }

@@ -17,7 +17,8 @@ namespace KitchenChaos_Server
         private readonly TcpClient tcpClient;
         private readonly GameServer server;
         private readonly NetworkStream stream;
-        private bool isConnected;
+
+        public bool IsConnected { get; private set; }
 
         /// <summary>
         /// 接受缓冲区，存还没处理完的字节
@@ -27,6 +28,8 @@ namespace KitchenChaos_Server
 
         public ServerRoom CurrentRoom { get; set; }
 
+        public DateTime LastReceiveTimeUtc { get; private set; } = DateTime.UtcNow;
+
         public ServerClient(int _playerId, TcpClient _client, GameServer _server)
         {
             Player = new ServerPlayer(_playerId,this);
@@ -34,7 +37,7 @@ namespace KitchenChaos_Server
             tcpClient = _client;
             server = _server;
             stream = tcpClient.GetStream();
-            isConnected = true;
+            IsConnected = true;
         }
 
         /// <summary>
@@ -44,6 +47,11 @@ namespace KitchenChaos_Server
         {
             _ = ReceiveLoopAsync();
         }
+
+        public void MarkReceive()
+        {
+            LastReceiveTimeUtc = DateTime.UtcNow;
+        }   
 
         /// <summary>
         /// 接收循环：持续从网络流中读取数据，解析成完整消息后交给 GameServer 处理
@@ -57,7 +65,7 @@ namespace KitchenChaos_Server
         {
             byte[] tempBuffer = new byte[4096];
 
-            while (isConnected)
+            while (IsConnected)
             {
                 try
                 {
@@ -91,6 +99,8 @@ namespace KitchenChaos_Server
                         byte[] body = new byte[bodyLength];
                         Array.Copy(receiveBuffer, NetworkMessage.HEADER_SIZE, body, 0, bodyLength);
 
+                        MarkReceive();
+
                         // 交给GameServer处理
                         server.OnMessageReceived(this, type, body);
 
@@ -118,7 +128,7 @@ namespace KitchenChaos_Server
                 }
             }
 
-            isConnected = false;
+            IsConnected = false;
             server.OnClientDisconnected(this);
         }
 
@@ -128,7 +138,7 @@ namespace KitchenChaos_Server
         /// <param name="data"></param>
         public void Send(byte[] data)
         {
-            if (!isConnected) return;
+            if (!IsConnected) return;
 
             try
             {
@@ -147,8 +157,8 @@ namespace KitchenChaos_Server
         /// </summary>
         public void Disconnect()
         {
-            if (!isConnected) return;
-            isConnected = false;
+            if (!IsConnected) return;
+            IsConnected = false;
 
             try
             {

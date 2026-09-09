@@ -72,7 +72,7 @@ namespace KitchenChaos_Server.Counter
             // 锅里没东西
             if (ItemIndex == -1 && !IsBoiling)
             {
-                if (Room.TryGetPlateByOwner(_player.PlayerId, out var heldPlate))   // 玩家手里有盘子
+                if (Room.ServerPlateManager.TryGetPlateByOwner(_player.PlayerId, out var heldPlate))   // 玩家手里有盘子
                 {
                     foreach (var ingredients in new List<int>(heldPlate.CurrentIngredients))   // 副本遍历，边遍历边删
                     {
@@ -105,7 +105,7 @@ namespace KitchenChaos_Server.Counter
             }
 
             // 锅里面有成品，装盘
-            if (ItemIndex != -1 && Room.TryGetPlateByOwner(_player.PlayerId, out var plateOnPlayer))
+            if (ItemIndex != -1 && Room.ServerPlateManager.TryGetPlateByOwner(_player.PlayerId, out var plateOnPlayer))
             {
                 if (plateOnPlayer.TryAddIngredient(ItemIndex))
                 {

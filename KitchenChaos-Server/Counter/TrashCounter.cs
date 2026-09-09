@@ -12,7 +12,7 @@ namespace KitchenChaos_Server.Counter
             if (_player.HeldItemIndex == -1) return;
 
             // 手持盘子不能丢（只有交付台能销毁盘子）
-            if (Room.TryGetPlateByOwner(_player.PlayerId, out _)) return;
+            if (Room.ServerPlateManager.TryGetPlateByOwner(_player.PlayerId, out _)) return;
 
             _player.HeldItemIndex = -1;
             Room.BroadcastAll(NetworkMessage.Create_InteractionSync(CounterId, -1, _player.PlayerId, -1));

@@ -51,11 +51,13 @@
     C2S_DeliveryRequest = 117,    // 客户端提交交付请求（plateId）——服务器权威校验订单
     C2S_RegisterRecipes = 118,    // 客户端上报配方表（连接后注册）——内容由客户端提供，裁决由服务端执行
     C2S_ScucessEnterGameScene = 128, // 成功进入游戏场景（服务器在此启动操作台更新循环）
+    C2S_RequestBackRoom = 130,// 向服务器请求返回房间列表
 
     // 解析（服务端 → 客户端）
     GameStartCD = 12,             // 开局倒计时
     GameingTimerSync = 7,         // 同步倒计时
     GameOver = 24,                // 游戏结束——原 18 与 PlateSpawned 冲突，已改 24
+    BackRoom = 131,
     RecipeSpawned = 8,            // 新订单出现
     RecipeCompleted = 9,          // 订单完成
     RecipeFailed = 10,            // 交付失败
@@ -68,7 +70,7 @@
     // 解析（服务端 → 客户端）
     SendMessage = 23,             // 聊天消息广播（playerId + message）
 
-    // ══════════════ 房间 ══════════════
+    #region Room
     // 上传（客户端 → 服务端）
     C2S_CreateRoom = 120,         // 创建房间（附带最大玩家数）
     C2S_JoinRoom = 121,           // 加入房间（附带房间号）
@@ -87,4 +89,10 @@
     RequestRoomList = 35,         // 房间列表
     PlayerReady = 36,             // 玩家准备
     StartGame = 37,               // 开始游戏
+    RoomOwnerChanged = 38,          // 房主变更 
+    //ResumeGameResult = 40,          // 断线重连（D7）已暂时禁用
+
+    C2S_HeartBeat = 138,
+    //C2S_ResumeGame = 131           // 断线重连（D7）已暂时禁用
+    #endregion
 }

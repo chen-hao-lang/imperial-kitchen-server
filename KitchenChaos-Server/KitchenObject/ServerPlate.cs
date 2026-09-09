@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 
-namespace KitchenChaos_Server
+namespace KitchenChaos_Server.KitchenObject
 {
     /// <summary>
     /// 服务端盘子实体。盘子是独立对象，拥有唯一ID和配料列表，
@@ -33,12 +33,12 @@ namespace KitchenChaos_Server
             CounterId = _counterId;
         }
 
-        public ServerPlate(int _plateKitchenObjectSOId, int _counterId)
-        {
-            //PlateId = _plateId;
-            platerKitchenobjectSOId = _plateKitchenObjectSOId;
-            CounterId = _counterId;
-        }
+        //public ServerPlate(int _plateKitchenObjectSOId, int _counterId)
+        //{
+        //    //PlateId = _plateId;
+        //    platerKitchenobjectSOId = _plateKitchenObjectSOId;
+        //    CounterId = _counterId;
+        //}
 
         public void SetPlateSO(int _plateSOIndex)
         {

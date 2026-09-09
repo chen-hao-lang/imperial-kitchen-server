@@ -1,4 +1,5 @@
-﻿using KitchenChaos_Server.Message;
+﻿using KitchenChaos_Server.Manager;
+using KitchenChaos_Server.Message;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -42,8 +43,8 @@ namespace KitchenChaos_Server.Room
                     if (seadId != -1)
                     {
                         // 向客户端发送房间创建的消息
-                        _owner.Send(NetworkMessage.Create_RoomCreated(roomId));
-                        _owner.Send(NetworkMessage.Create_RoomJoined(roomId, seadId, _owner.Player.PlayerId, _owner.Player.Name));
+                        _owner.Send(NetworkMessage.Create_RoomCreated(roomId,_roomName,_maxPlayers));
+                        _owner.Send(NetworkMessage.Create_RoomJoined(roomId, seadId, _owner.Player.PlayerId, _owner.Player.Name, room.MaxPlayer));
                     }
                 }
                 else
@@ -74,11 +75,11 @@ namespace KitchenChaos_Server.Room
                             {
                                 int seadId = room.AddClient(_client);
                                 // 给要加入房间的客户端发送加入成功的消息（RoomJoined），让客户端进入房间并切换场景
-                                _client.Send(NetworkMessage.Create_RoomJoined(_roomId, seadId, _client.Player.PlayerId, _client.Player.Name));
+                                _client.Send(NetworkMessage.Create_RoomJoined(_roomId, seadId, _client.Player.PlayerId, _client.Player.Name, room.MaxPlayer));
                                 _client.Send(NetworkMessage.Create_RoomPlayerListSync(room.GetRoomPlayerInfo()));
 
                                 // 给房间内的其他客户端发送当前加入房间的玩家，方便客户端更新玩家模型
-                                room.BroadcastExcept(_client, NetworkMessage.Create_RoomJoined(_roomId, seadId, _client.Player.PlayerId,_client.Player.Name));
+                                room.BroadcastExcept(_client, NetworkMessage.Create_RoomJoined(_roomId, seadId, _client.Player.PlayerId, _client.Player.Name, room.MaxPlayer));
                                 return true;
                             }
                             else
@@ -122,11 +123,20 @@ namespace KitchenChaos_Server.Room
 
             bool roomIsEmpty = room.RemoveClient(_client);
             if (roomIsEmpty)
-                RemoveRoom(_client, room.RoomId);
+                RemoveEmptyRoom(room.RoomId);
+        }
+
+        /// <summary>最后一名成员离开/掉线后回收空房（不要求离开者是原始房主）</summary>
+        public void RemoveEmptyRoom(int _roomId)
+        {
+            lock (roomsLock)
+            {
+                DestroyRoomInternal(_roomId);
+            }
         }
 
         /// <summary>
-        /// 移除房间
+        /// 房主主动解散房间（仅房主可解散）。
         /// </summary>
         /// <param name="_roomId">要移除的房间ID</param>
         public void RemoveRoom(ServerClient _client, int _roomId)
@@ -136,16 +146,61 @@ namespace KitchenChaos_Server.Room
                 // 只有房主才可以移除房间
                 if (rooms.ContainsKey(_roomId) && _client.Player.PlayerId == rooms[_roomId].OwnPlayerId)
                 {
-                    rooms[_roomId].BroadcastAll(NetworkMessage.Create_RoomDestroyed(_roomId));
-                    rooms[_roomId].Stop();
-
-                    rooms.Remove(_roomId);
-
-                    //向其他客户端更新当前的房间列表
-                    NetworkMessage.Create_RequestRoomList(GetRoomList());
+                    DestroyRoomInternal(_roomId);
                 }
             }
         }
+
+        /// <summary>销毁房间：广播 RoomDestroyed、停止循环、移除登记。调用方需持有 roomsLock（可重入）。</summary>
+        private void DestroyRoomInternal(int _roomId)
+        {
+            if (!rooms.ContainsKey(_roomId)) return;
+
+            rooms[_roomId].BroadcastAll(NetworkMessage.Create_RoomDestroyed(_roomId));
+            rooms[_roomId].Stop();
+            rooms.Remove(_roomId);
+            Console.WriteLine($"[ServerRoomManager] 房间 {_roomId} 已销毁");
+        }
+
+        // 断线重连（D7）已暂时禁用
+        /*
+        /// <summary>
+        /// 重连认领入口。认领成功：房间把新连接绑定为旧玩家、给本人 ResumeGameResult、给全房间 FullSync。
+        /// </summary>
+        public void ResumeGame(ServerClient _client, int _roomId, int _oldPlayerId)
+        {
+            ServerRoom room;
+            lock (roomsLock)
+            {
+                if (!rooms.TryGetValue(_roomId, out room))
+                {
+                    room = null;
+                }
+            }
+
+            if (room == null)
+            {
+                SendResumeFailed(_client);
+                return;
+            }
+
+            if (!room.TryResumePlayer(_client, _oldPlayerId))
+            {
+                SendResumeFailed(_client);
+                return;
+            }
+
+            // 认领成功后：通知其他客户端该玩家回来了（客户端会重新生成其远程模型）
+            room.BroadcastAll(NetworkMessage.Create_RoomPlayerListSync(room.GetRoomPlayerInfo()));
+        }
+
+        private static void SendResumeFailed(ServerClient _client)
+        {
+            // ok=0；其余字段填充占位，客户端只认 ok
+            _client.Send(NetworkMessage.Create_ResumeGameResult(
+                false, -1, 0f, 0f, 0f, 0f, -1));
+        }
+        */
 
         /// <summary>
         /// 移除所有房间
@@ -161,19 +216,28 @@ namespace KitchenChaos_Server.Room
             rooms.Clear();
         }
 
-        public void StartGame(int _roomId)
+        /// <summary>
+        /// 开始游戏
+        /// </summary>
+        /// <param name="_client"></param>
+        /// <param name="_roomId"></param>
+        public void EnterGameScene(ServerClient _client,int _roomId)
         {
             lock (roomsLock)
             {
-                foreach (var roomId in rooms.Keys)
+                if (!rooms.TryGetValue(_roomId, out var room))
                 {
-                    if (roomId == _roomId)
-                    {
-                        // 先查看当前房间的人数是否满足
-                        if (rooms[roomId].players.Count == rooms[roomId].MaxPlayer)
-                            rooms[roomId].EnterGameScene();
-                    }
+                    Console.WriteLine($"[ServerRoomManager] 房间 {_roomId} 不存在，无法开局");
+                    return;
                 }
+
+                if (!room.CanStartGame(_client))
+                {
+                    Console.WriteLine($"[ServerRoomManager] 玩家 {_client.Player.PlayerId} 请求开局被拒绝：非房主/未全员Ready/状态不允许");
+                    return;
+                }
+
+                room.EnterGameScene();
             }
         }
 

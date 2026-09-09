@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using KitchenChaos_Server.Message;
 using KitchenChaos_Server.Room;
@@ -18,6 +17,7 @@ namespace KitchenChaos_Server
 
         private TcpListener listener;
         private bool isRunning;
+        private readonly object serverStateLock = new object();
         private int nextPlayerId = 1;
 
         /// <summary>
@@ -28,18 +28,41 @@ namespace KitchenChaos_Server
 
         private ServerRoomManager roomManager;
 
+        private const int HEARTBEAT_INTERVAL_MS = 1000; // 心跳间隔，单位毫秒
+        private const int CLIENT_TIMEOUT_SECONDS = 10; 
+
         /// <summary>
         /// 启动服务器，开始监听
         /// </summary>
         /// <param name="port"></param>
         public void Start(int port)
         {
-            roomManager = new ServerRoomManager();
+            lock (serverStateLock)
+            {
+                if (isRunning)
+                {
+                    throw new InvalidOperationException("服务器已经启动，不能重复启动。");
+                }
 
-            listener = new TcpListener(IPAddress.Any, port);
-            listener.Start();
-            isRunning = true;
+                TcpListener newListener = new TcpListener(IPAddress.Any, port);
+                try
+                {
+                    // 只有监听器成功绑定后，才发布状态并启动后台循环。
+                    newListener.Start();
+                    listener = newListener;
+                    roomManager = new ServerRoomManager();
+                    isRunning = true;
+                }
+                catch (SocketException ex)
+                {
+                    newListener.Stop();
+                    listener = null;
+                    throw new InvalidOperationException(
+                        $"无法监听端口 {port}。该端口可能已被其他进程或另一个服务器实例占用。", ex);
+                }
+            }
 
+            _ = HeartbeatLoopAsync();
             _ = AcceptLoopAsync();
         }
 
@@ -48,8 +71,12 @@ namespace KitchenChaos_Server
         /// </summary>
         public void Stop()
         {
-            isRunning = false;
-            listener?.Stop();
+            lock (serverStateLock)
+            {
+                isRunning = false;
+                listener?.Stop();
+                listener = null;
+            }
 
             lock (clientsLock)
             {
@@ -59,9 +86,52 @@ namespace KitchenChaos_Server
                 }
                 clients.Clear();
 
-                roomManager.RemoveAllRoom();
+                roomManager?.RemoveAllRoom();
             }
         }
+
+        #region 心跳检测与客户端超时处理
+        private async Task HeartbeatLoopAsync()
+        {
+            while (isRunning)
+            {
+                try
+                {
+                    await Task.Delay(HEARTBEAT_INTERVAL_MS);
+                    CheckClientTimeouts();
+                }
+                catch (ObjectDisposedException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    if (isRunning)
+                        Console.WriteLine($"[GameServer] 心跳检查出错：{ex.Message}");
+                }
+            }
+        }
+
+        private void CheckClientTimeouts()
+        {
+            List<ServerClient> timedOutClients = new List<ServerClient>();
+            lock (clientsLock)
+            {
+                foreach (var client in clients)
+                {
+                    if ((DateTime.UtcNow - client.LastReceiveTimeUtc).TotalSeconds > CLIENT_TIMEOUT_SECONDS)
+                    {
+                        timedOutClients.Add(client);
+                    }
+                }
+                foreach (var client in timedOutClients)
+                {
+                    Console.WriteLine($"[GameServer] 玩家 {client.Player.PlayerId} 超时，断开连接");
+                    client.Disconnect();
+                }
+            }
+        }
+        #endregion
 
         /// <summary>
         /// 持续等待新客户端连接的循环
@@ -141,6 +211,16 @@ namespace KitchenChaos_Server
 
             switch (_type)
             {
+                case MessageType.C2S_Connect:
+                    // 连接消息已经在 OnClientConnected 中处理过了，这里不再处理
+                    break;
+                case MessageType.C2S_HeartBeat:
+                    // 空消息，仅用于保活；收到任意消息都会在 ServerClient.ReceiveLoop 中刷新 LastReceiveTimeUtc
+                    break;
+                // 断线重连（D7）已暂时禁用
+                //case MessageType.C2S_ResumeGame:
+                //    HandleResumeGame(_client, _data);
+                //    break;
                 case MessageType.C2S_CreateRoom:
                     HandleCreateRoom(_client,_data);
                     break;
@@ -160,7 +240,7 @@ namespace KitchenChaos_Server
                     _client.Disconnect();
                     break;
                 case MessageType.C2S_RequestEnterGameScene:
-                    HandleRequestEnterGameScene(_data);
+                    HandleRequestEnterGameScene(_client,_data);
                     break;
                 default:// 其他游戏的内的同步
                     var room = _client.CurrentRoom;
@@ -224,11 +304,23 @@ namespace KitchenChaos_Server
         /// 请求进入游戏场景
         /// </summary>
         /// <param name="_data"></param>
-        private void HandleRequestEnterGameScene(byte[] _data)
+        private void HandleRequestEnterGameScene(ServerClient _client,byte[] _data)
         {
             var roomId = NetworkMessage.Parse_StartGame(_data);
             // 通知该房间内的所有客户端，转移场景
-            roomManager.StartGame(roomId);
+            roomManager.EnterGameScene(_client,roomId);
         }
+
+        // 断线重连（D7）已暂时禁用
+        /*
+        /// <summary>
+        /// 重连认领：玩家重新连上后，请求认领自己在某房间的局内席位。
+        /// </summary>
+        private void HandleResumeGame(ServerClient _client, byte[] _data)
+        {
+            var (roomId, oldPlayerId) = NetworkMessage.Parse_ResumeGame(_data);
+            roomManager.ResumeGame(_client, roomId, oldPlayerId);
+        }
+        */
     }
 }

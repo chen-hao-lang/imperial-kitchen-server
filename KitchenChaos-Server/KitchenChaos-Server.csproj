@@ -1,83 +1,11 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{1D9721A7-E645-4EF2-8EC0-BC3557D86E77}</ProjectGuid>
+    <TargetFramework>net8.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <RootNamespace>KitchenChaos_Server</RootNamespace>
-    <AssemblyName>KitchenChaos-Server</AssemblyName>
-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <Deterministic>true</Deterministic>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Xml" />
+    <None Include="Manager\ServerPlateManager.cs" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="Counter\BaseCounter.cs" />
-    <Compile Include="Counter\BoilingCounter.cs" />
-    <Compile Include="Counter\ContainerCounter.cs" />
-    <Compile Include="Counter\ClearCounter.cs" />
-    <Compile Include="Counter\CounterFactory.cs" />
-    <Compile Include="Counter\CounterInteractionHelper.cs" />
-    <Compile Include="Counter\CounterType.cs" />
-    <Compile Include="Counter\DeliveryCounter.cs" />
-    <Compile Include="Counter\PlateCounter.cs" />
-    <Compile Include="Counter\StreamingCounter.cs" />
-    <Compile Include="Counter\TrashCounter.cs" />
-    <Compile Include="GameServer.cs" />
-    <Compile Include="KitchenObjectRegistry.cs" />
-    <Compile Include="Message\BoilingRecipeSO.cs" />
-    <Compile Include="Message\CuttingRecipeSO.cs" />
-    <Compile Include="Message\MessageType.cs" />
-    <Compile Include="Message\NetworkMessage.cs" />
-    <Compile Include="Message\StreamingRecipeSO.cs" />
-    <Compile Include="Program.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="RecipeRegistry.cs" />
-    <Compile Include="Room\ERoomJoinFailReason.cs" />
-    <Compile Include="Room\ServerRoom.cs" />
-    <Compile Include="Room\ServerRoomManager.cs" />
-    <Compile Include="ServerClient.cs" />
-    <Compile Include="Counter\CuttingCounter.cs" />
-    <Compile Include="ServerCounterManager.cs" />
-    <Compile Include="ServerDeliveryManager.cs" />
-    <Compile Include="ServerGameManager.cs" />
-    <Compile Include="ServerPlayer.cs" />
-    <Compile Include="ServerPlate.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="App.config" />
-  </ItemGroup>
-  <ItemGroup />
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -21,7 +21,16 @@ namespace KitchenChaos_Server
             Console.WriteLine($"正在启动，监听端口: {port}");
 
             GameServer server = new GameServer();
-            server.Start(port);
+            try
+            {
+                server.Start(port);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"服务器启动失败：{ex.Message}");
+                Console.WriteLine("请关闭占用该端口的进程，或使用其他端口重试。");
+                return;
+            }
 
             Console.WriteLine("服务器已启动，按任意键关闭...");
             Console.ReadKey();

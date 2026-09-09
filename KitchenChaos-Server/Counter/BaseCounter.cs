@@ -11,8 +11,6 @@ namespace KitchenChaos_Server.Counter
         /// <summary>台子上的物品索引，-1=空</summary>
         public int ItemIndex { get; set; } = -1;
 
-        public int ContainerSOId { get; set; }
-
         public BaseCounter(ServerRoom _room,int _counterId,CounterType _type)
         {
             Room = _room;   

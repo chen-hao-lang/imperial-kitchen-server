@@ -1,4 +1,5 @@
-﻿using KitchenChaos_Server.Message;
+﻿using KitchenChaos_Server.KitchenObject;
+using KitchenChaos_Server.Message;
 using KitchenChaos_Server.Room;
 
 namespace KitchenChaos_Server.Counter
@@ -10,14 +11,14 @@ namespace KitchenChaos_Server.Counter
             ServerRoom room = _counter.GetRoom();
 
             // 检查操作台上有没有盘子
-            bool counterHasPlate = room.TryGetPlateOnCounter(_counter.CounterId, out ServerPlate plateOnCounter);
+            bool counterHasPlate = room.ServerPlateManager.TryGetPlateOnCounter(_counter.CounterId, out ServerPlate plateOnCounter);
 
             // ── 台子上面什么都没有 ──
             if (_counter.ItemIndex == -1 && !counterHasPlate)
             {
                 if (_player.HeldItemIndex == -1) return;   // 玩家手里也没东西
 
-                if (room.TryGetPlateByOwner(_player.PlayerId, out var heldPlate))   // 玩家手里是盘子
+                if (room.ServerPlateManager.TryGetPlateByOwner(_player.PlayerId, out var heldPlate))   // 玩家手里是盘子
                 {
                     // 把玩家手里的盘子放到操作台上
                     heldPlate.OwnerType = 1;
@@ -48,7 +49,7 @@ namespace KitchenChaos_Server.Counter
                     room.BroadcastAll(NetworkMessage.Create_PlateOwnerSync(plateOnCounter));
                     room.BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, _counter.ItemIndex, _player.PlayerId, _player.HeldItemIndex));
                 }
-                else if (!room.TryGetPlateByOwner(_player.PlayerId, out _))   // 玩家持配料 → 加到台面盘子里
+                else if (!room.ServerPlateManager.TryGetPlateByOwner(_player.PlayerId, out _))   // 玩家持配料 → 加到台面盘子里
                 {
                     int ing = _player.HeldItemIndex;
                     if (plateOnCounter.TryAddIngredient(ing))
@@ -68,7 +69,7 @@ namespace KitchenChaos_Server.Counter
                 _counter.ItemIndex = -1;
                 room.BroadcastAll(NetworkMessage.Create_InteractionSync(_counter.CounterId, -1, _player.PlayerId, _player.HeldItemIndex));
             }
-            else if (room.TryGetPlateByOwner(_player.PlayerId, out var heldPlate2))   // 玩家持盘 → 把台面物装进盘
+            else if (room.ServerPlateManager.TryGetPlateByOwner(_player.PlayerId, out var heldPlate2))   // 玩家持盘 → 把台面物装进盘
             {
                 if (heldPlate2.TryAddIngredient(_counter.ItemIndex))
                 {
