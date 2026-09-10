@@ -43,11 +43,6 @@ namespace KitchenChaos_Server.Room
         /// </summary>
         private readonly object stateLock = new object();
 
-        /// <summary>
-        /// 游戏主循环用的 CancellationTokenSource（ServerGameManager 消费）
-        /// </summary>
-        private CancellationTokenSource gameCts;
-
         private bool gameSceneTransitionStarted = false;
         public bool SceneTransitionStarted
         {
@@ -90,11 +85,10 @@ namespace KitchenChaos_Server.Room
             clients = new List<ServerClient>();
             players = new Dictionary<int, ServerPlayer>();
 
-            gameCts = new CancellationTokenSource();
             CounterManager = new ServerCounterManager(this);
-            RoomGameManager = new ServerGameManager(this, gameCts);
+            RoomGameManager = new ServerGameManager(this);
             RoomDeliveryManager = new ServerDeliveryManager(this);
-            ServerPlateManager = new ServerPlateManager(this);  
+            ServerPlateManager = new ServerPlateManager(this);
         }
 
         public int AddClient(ServerClient _client)
@@ -172,45 +166,44 @@ namespace KitchenChaos_Server.Room
         }
 
         /// <summary>
-        /// 局内断开：把玩家移入暂存席（保留 ServerPlayer 对象：位置/手持/座位），
-        /// 广播 PlayerLeft 让其他客户端移除其远程模型。
+        /// 局内断开：断线重连（D7）已暂时禁用，不再保留席位，直接把玩家移出房间。
+        /// ⚠️ 必须真正移除，否则玩家会残留在 players 字典（幽灵玩家）：
+        /// RoomPlayerListSync 会带上永远未准备的玩家 → 客户端 startBtn 永远不可用、CanStartGame 永远失败。
         /// 返回“房间是否已空”（空则 RoomManager 回收）。
         /// 调用方已持有 stateLock。
         /// </summary>
         private bool HandleInGameDisconnect(ServerClient _client)
         {
-            //int leavingPlayerId = _client.Player.PlayerId;
+            int leavingPlayerId = _client.Player.PlayerId;
 
-            //// 从“在线集合”移除
-            //clients.Remove(_client);
-            //players.Remove(leavingPlayerId);
-            //_client.CurrentRoom = null;
+            // 从“在线集合”移除，同时清掉玩家登记（无暂存席）
+            clients.Remove(_client);
+            players.Remove(leavingPlayerId);
+            _client.CurrentRoom = null;
 
-            //// 若该玩家已有暂存席（异常重复断开），先清旧
-            //reconnectSlots.Remove(leavingPlayerId);
+            // 房主离开且还有人 → 选最小 PlayerId 作为新房主并广播
+            if (leavingPlayerId == OwnPlayerId && players.Count > 0)
+            {
+                int newOwnerPlayerId = ServerRule.PickNewOwnerPlayerId(players.Keys);
+                OwnPlayerId = newOwnerPlayerId;
+                Console.WriteLine($"[ServerRoom] 房间 {RoomId} 房主转移：{leavingPlayerId} → {newOwnerPlayerId}");
+                BroadcastAll(NetworkMessage.Create_RoomOwnerChanged(newOwnerPlayerId));
+            }
 
-            //// 保留玩家对象，等待重连认领（保留位置/手持，FullSync 负责重建世界）
-            //reconnectSlots[leavingPlayerId] = new ReconnectSlot
-            //{
-            //    Player = _client.Player,
-            //    ExpireUtc = DateTime.UtcNow.AddSeconds(RECONNECT_GRACE_SECONDS),
-            //};
+            // 通知其他客户端：该玩家离开（远程模型移除），并刷新权威玩家列表
+            BroadcastAll(NetworkMessage.Create_PlayerLeft(leavingPlayerId));
+            BroadcastAll(NetworkMessage.Create_RoomPlayerListSync(GetRoomPlayerInfo()));
 
-            //Console.WriteLine($"[ServerRoom] 房间 {RoomId} 玩家 {leavingPlayerId} 局内掉线，席位保留至 "
-            //                  + $"{reconnectSlots[leavingPlayerId].ExpireUtc:HH:mm:ss}");
+            Console.WriteLine($"[ServerRoom] 房间 {RoomId} 玩家 {leavingPlayerId} 局内掉线，已移除（在线 {clients.Count} 人）");
 
-            //// 通知其他客户端：该玩家离开（远程模型移除）
-            //BroadcastAll(NetworkMessage.Create_PlayerLeft(leavingPlayerId));
+            // 转场中有人掉线：剩余玩家可能已全部上报 loaded，重估开局（避免死等 8s 超时兜底）
+            if (gameSceneTransitionStarted)
+            {
+                TryStartGameplayIfAllLoaded();
+            }
 
-            //// 转场中有人掉线：剩余玩家可能已全部上报 loaded，重估开局（避免死等 8s 超时兜底）
-            //if (gameSceneTransitionStarted)
-            //{
-            //    TryStartGameplayIfAllLoaded();
-            //}
-
-            //// 房间已无人（在线）→ 返回空；RoomManager 会销毁房间（暂存席一并作废）
-            //return clients.Count == 0;
-            return false;
+            // 房间已无人（在线）→ 返回空；RoomManager 会销毁房间
+            return clients.Count == 0;
         }
 
         // 断线重连（D7）已暂时禁用
@@ -329,7 +322,7 @@ namespace KitchenChaos_Server.Room
         /// <summary>
         /// 进入游戏场景
         /// </summary>
-        public void EnterGameScene()
+        public void EnterGameScene(CancellationTokenSource _cts)
         {
             lock (stateLock)
             {
@@ -337,6 +330,11 @@ namespace KitchenChaos_Server.Room
                 gameSceneTransitionStarted = true;
                 loadedGameScenePlayerIds.Clear();
                 sceneTransitionStartTimeUtc = DateTime.UtcNow;
+
+                //CounterManager = new ServerCounterManager(this);
+                //RoomGameManager = new ServerGameManager(this, gameCts);
+                //RoomDeliveryManager = new ServerDeliveryManager(this);
+                //ServerPlateManager = new ServerPlateManager(this);
 
                 // 先广播权威玩家列表（含座位与准备状态），再广播场景切换
                 BroadcastAll(NetworkMessage.Create_RoomPlayerListSync(GetRoomPlayerInfo()));
@@ -403,7 +401,13 @@ namespace KitchenChaos_Server.Room
 
             Console.WriteLine($"[ServerRoom] 房间 {RoomId} 开局：loaded={loadedGameScenePlayerIds.Count}/{clients.Count}");
 
+            // 1) 重置订单与分数（清掉上一局）
             RoomDeliveryManager.StartGame();
+            // 2) 广播全量快照（台面/盘子/订单此时均为空）：
+            //    客户端据此清掉上一局残留（待交付菜单、台面物品、盘子实体等），
+            //    否则 DeliveryManagerUI 会显示上一局的订单、台面残留物品。
+            SendFullSyncToAllLocked();
+            // 3) 启动服务器主循环
             RoomGameManager.StartGame();
 
             gameSceneTransitionStarted = false;
@@ -448,7 +452,7 @@ namespace KitchenChaos_Server.Room
         {
             lock (stateLock)
             {
-                gameCts?.Cancel();
+                //gameCts?.Cancel();
 
                 foreach (var client in clients)
                 {
@@ -465,17 +469,19 @@ namespace KitchenChaos_Server.Room
             }
         }
 
+        /// <summary>
+        /// 游戏结束后，返回房间场景 
+        /// </summary>
         public void BackRoomScene()
         {
             lock (stateLock)
             {
-                gameCts?.Cancel();
-
                 foreach (var player in players.Values)
                 {
                     player.IsReady = false; 
                 }
 
+                RoomGameManager.Clear();
                 CounterManager.Clear();
                 RoomDeliveryManager.Clear();
                 ServerPlateManager.Clear();
@@ -533,7 +539,7 @@ namespace KitchenChaos_Server.Room
                         HandleSuccessEnterGameScene(_sender);
                         break;
                     case MessageType.C2S_RequestBackRoom:
-                        HandleRequestBackRoom();
+                        HandleRequestBackRoom(_sender);
                         break;
                     default:
                         // 未处理的消息类型
@@ -644,8 +650,12 @@ namespace KitchenChaos_Server.Room
             BroadcastExcept(_sender, NetworkMessage.Create_SendMessage(playerId, message));
         }
 
-        private void HandleRequestBackRoom()
+        private void HandleRequestBackRoom(ServerClient _sneder)
         {
+            // 只有房主才能开始游戏
+            if (_sneder.Player.PlayerId != OwnPlayerId)
+                return;
+
             BackRoomScene();
             BroadcastAll(NetworkMessage.Create_BackRoom());
             BroadcastAll(NetworkMessage.Create_RoomPlayerListSync(GetRoomPlayerInfo()));

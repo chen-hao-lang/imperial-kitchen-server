@@ -43,12 +43,11 @@ namespace KitchenChaos_Server
 
         /// <summary>台子/订单推进频率：约 20 次/秒（0.05s）</summary>
         private const float TICK_INTERVAL = 0.05f;
-        private const int TICKS_PER_SECOND = 20;
 
         private readonly object readyLock = new object();
 
         private CancellationTokenSource cts;
-        private CancellationToken ct;
+        private CancellationToken Ct => cts.Token;
 
         private bool hasStarted;
 
@@ -67,11 +66,9 @@ namespace KitchenChaos_Server
         /// </summary>
         private int lastBroadcastTime = -1;
 
-        public ServerGameManager(ServerRoom _room, CancellationTokenSource _cts)
+        public ServerGameManager(ServerRoom _room)
         {
             room = _room;
-            cts = _cts;
-            ct = cts.Token;
         }
 
         /// <summary>
@@ -83,8 +80,19 @@ namespace KitchenChaos_Server
             {
                 if (hasStarted) return;
                 hasStarted = true;
+                cts = new CancellationTokenSource();    
             }
             _ = RunGameLoopAsync();
+        }
+
+        public void Clear()
+        {
+            lock (readyLock)
+            {
+                cts?.Cancel();
+                hasStarted = false;
+                isRunning = false;
+            }
         }
 
         public void SetGameState(EGameState state)
@@ -103,14 +111,14 @@ namespace KitchenChaos_Server
                 if (isRunning) return;
                 isRunning = true;
 
-                while (!ct.IsCancellationRequested)
+                while (!Ct.IsCancellationRequested)
                 {
                     room.CounterManager.UpdateAll(TICK_INTERVAL);
                     room.RoomDeliveryManager.Update(TICK_INTERVAL);
 
                     UpdateGameStat(TICK_INTERVAL);
 
-                    await Task.Delay((int)(TICK_INTERVAL * 1000), ct);
+                    await Task.Delay((int)(TICK_INTERVAL * 1000), Ct);
                 }
             }
             catch (TaskCanceledException)
@@ -165,6 +173,7 @@ namespace KitchenChaos_Server
 
                 case EGameState.GameOver:
                     //cts.Cancel();// 停止当前的线程
+                    SetGameState(EGameState.WaitingForPlayers);
                     room.BroadcastAll(NetworkMessage.Crteate_GameOver(room.RoomDeliveryManager.SuccessfulRecipesAmount));
                     Console.WriteLine("[ServerGameManager] 游戏结束");
                     break; // 终态

@@ -1,8 +1,8 @@
-﻿using KitchenChaos_Server.Manager;
-using KitchenChaos_Server.Message;
+﻿using KitchenChaos_Server.Message;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace KitchenChaos_Server.Room
 {
@@ -237,7 +237,7 @@ namespace KitchenChaos_Server.Room
                     return;
                 }
 
-                room.EnterGameScene();
+                room.EnterGameScene(new CancellationTokenSource());
             }
         }
 
