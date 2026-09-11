@@ -237,7 +237,7 @@ namespace KitchenChaos_Server.Room
                     return;
                 }
 
-                room.EnterGameScene(new CancellationTokenSource());
+                room.EnterGameScene();
             }
         }
 

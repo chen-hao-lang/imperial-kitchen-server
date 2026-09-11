@@ -30,6 +30,12 @@ namespace KitchenChaos_Server
 
         public DateTime LastReceiveTimeUtc { get; private set; } = DateTime.UtcNow;
 
+        /// <summary>
+        /// 该客户端是否为调试客户端（编辑器 / 开发版，由心跳标志位标记）。
+        /// 调试客户端在断点暂停期间会停止发送心跳，因此使用更宽松的保活超时。
+        /// </summary>
+        public bool IsDebugClient { get; private set; }
+
         public ServerClient(int _playerId, TcpClient _client, GameServer _server)
         {
             Player = new ServerPlayer(_playerId,this);
@@ -52,6 +58,20 @@ namespace KitchenChaos_Server
         {
             LastReceiveTimeUtc = DateTime.UtcNow;
         }   
+
+        /// <summary>
+        /// 应用心跳消息体中的标志位（bit0 = 调试客户端）。
+        /// 与客户端 NetworkMessage.HeartbeatFlag_DebugClient 保持一致。
+        /// </summary>
+        /// <param name="_flags">心跳消息体第 1 个字节</param>
+        /// <returns>本次调用是否使该客户端首次被标记为调试客户端</returns>
+        public bool MarkHeartbeatFlags(byte _flags)
+        {
+            if ((_flags & 0x01) == 0 || IsDebugClient) return false;
+
+            IsDebugClient = true;
+            return true;
+        }
 
         /// <summary>
         /// 接收循环：持续从网络流中读取数据，解析成完整消息后交给 GameServer 处理

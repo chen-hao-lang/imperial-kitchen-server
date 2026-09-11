@@ -28,8 +28,29 @@ namespace KitchenChaos_Server
 
         private ServerRoomManager roomManager;
 
-        private const int HEARTBEAT_INTERVAL_MS = 1000; // 心跳间隔，单位毫秒
-        private const int CLIENT_TIMEOUT_SECONDS = 10; 
+        private const int HEARTBEAT_INTERVAL_MS = 1000; // 心跳检查间隔，单位毫秒
+        private const int CLIENT_TIMEOUT_SECONDS = 10;  // 普通客户端：超过该时长未收到任何消息即判定掉线
+
+        /// <summary>
+        /// 调试客户端（编辑器 / 开发版）的保活超时（秒）。
+        /// 断点调试、编辑器失去焦点时心跳会长时间停发，若仍按 <see cref="CLIENT_TIMEOUT_SECONDS"/> 判定会误断开，
+        /// 因此调试客户端使用较宽松的超时。可用环境变量 KC_DEBUG_CLIENT_TIMEOUT 覆盖（单位：秒）。
+        /// </summary>
+        private static readonly int CLIENT_DEBUG_TIMEOUT_SECONDS = ResolveDebugClientTimeoutSeconds();
+
+        /// <summary>
+        /// 解析调试客户端超时：优先读环境变量 KC_DEBUG_CLIENT_TIMEOUT，否则默认 600 秒（10 分钟）。
+        /// </summary>
+        private static int ResolveDebugClientTimeoutSeconds()
+        {
+            if (int.TryParse(Environment.GetEnvironmentVariable("KC_DEBUG_CLIENT_TIMEOUT"), out int seconds)
+                && seconds > 0)
+            {
+                return seconds;
+            }
+
+            return 600;
+        }
 
         /// <summary>
         /// 启动服务器，开始监听
@@ -119,16 +140,38 @@ namespace KitchenChaos_Server
             {
                 foreach (var client in clients)
                 {
-                    if ((DateTime.UtcNow - client.LastReceiveTimeUtc).TotalSeconds > CLIENT_TIMEOUT_SECONDS)
+                    // 调试客户端（编辑器/开发版）在断点暂停期间不发心跳，使用放宽后的超时
+                    int timeoutSeconds = client.IsDebugClient
+                        ? CLIENT_DEBUG_TIMEOUT_SECONDS
+                        : CLIENT_TIMEOUT_SECONDS;
+
+                    if ((DateTime.UtcNow - client.LastReceiveTimeUtc).TotalSeconds > timeoutSeconds)
                     {
                         timedOutClients.Add(client);
                     }
                 }
                 foreach (var client in timedOutClients)
                 {
-                    Console.WriteLine($"[GameServer] 玩家 {client.Player.PlayerId} 超时，断开连接");
+                    Console.WriteLine($"[GameServer] 玩家 {client.Player.PlayerId} 超时（超过 " +
+                                      $"{(client.IsDebugClient ? CLIENT_DEBUG_TIMEOUT_SECONDS : CLIENT_TIMEOUT_SECONDS)}s 未收到消息），断开连接");
                     client.Disconnect();
                 }
+            }
+        }
+        /// <summary>
+        /// 处理心跳消息：解析标志位（bit0 = 调试客户端）。
+        /// 保活时间已在 ServerClient.ReceiveLoopAsync 中统一刷新，此处不重复刷新。
+        /// </summary>
+        /// <param name="_client">发送心跳的客户端</param>
+        /// <param name="_data">心跳消息体：flags(byte)，可为空（旧版客户端）</param>
+        private void HandleHeartbeat(ServerClient _client, byte[] _data)
+        {
+            if (_data == null || _data.Length < 1) return;
+
+            if (_client.MarkHeartbeatFlags(_data[0]))
+            {
+                Console.WriteLine($"[GameServer] 玩家 {_client.Player.PlayerId} 为调试客户端，" +
+                                  $"保活超时放宽至 {CLIENT_DEBUG_TIMEOUT_SECONDS}s");
             }
         }
         #endregion
@@ -207,7 +250,11 @@ namespace KitchenChaos_Server
         /// <param name="_data">消息体</param>
         public void OnMessageReceived(ServerClient _client, MessageType _type, byte[] _data)
         {
-            Console.WriteLine($"[GameServer] 收到消息 玩家{_client.Player.PlayerId} 类型={_type}");
+            // 心跳每隔几秒一次，单独过滤避免日志刷屏
+            if (_type != MessageType.C2S_HeartBeat)
+            {
+                Console.WriteLine($"[GameServer] 收到消息 玩家{_client.Player.PlayerId} 类型={_type}");
+            }
 
             switch (_type)
             {
@@ -215,7 +262,7 @@ namespace KitchenChaos_Server
                     // 连接消息已经在 OnClientConnected 中处理过了，这里不再处理
                     break;
                 case MessageType.C2S_HeartBeat:
-                    // 空消息，仅用于保活；收到任意消息都会在 ServerClient.ReceiveLoop 中刷新 LastReceiveTimeUtc
+                    HandleHeartbeat(_client, _data);
                     break;
                 // 断线重连（D7）已暂时禁用
                 //case MessageType.C2S_ResumeGame:

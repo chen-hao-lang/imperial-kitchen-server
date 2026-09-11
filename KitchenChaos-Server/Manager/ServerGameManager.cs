@@ -69,18 +69,19 @@ namespace KitchenChaos_Server
         public ServerGameManager(ServerRoom _room)
         {
             room = _room;
+            gameStata = (int)EGameState.WaitingForPlayers;
         }
 
         /// <summary>
         /// 启动游戏主循环（幂等，只启动一次）。
         /// </summary>
-        public void StartGame()
+        public void StartGame(CancellationTokenSource _cts)
         {
             lock (readyLock)
             {
                 if (hasStarted) return;
                 hasStarted = true;
-                cts = new CancellationTokenSource();    
+                cts = _cts;
             }
             _ = RunGameLoopAsync();
         }
@@ -172,7 +173,8 @@ namespace KitchenChaos_Server
                     break;
 
                 case EGameState.GameOver:
-                    //cts.Cancel();// 停止当前的线程
+                    cts?.Cancel();
+
                     SetGameState(EGameState.WaitingForPlayers);
                     room.BroadcastAll(NetworkMessage.Crteate_GameOver(room.RoomDeliveryManager.SuccessfulRecipesAmount));
                     Console.WriteLine("[ServerGameManager] 游戏结束");

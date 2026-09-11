@@ -43,6 +43,9 @@ namespace KitchenChaos_Server.Room
         /// </summary>
         private readonly object stateLock = new object();
 
+        /// <summary>
+        /// 是否开始房间的转换
+        /// </summary>
         private bool gameSceneTransitionStarted = false;
         public bool SceneTransitionStarted
         {
@@ -75,6 +78,8 @@ namespace KitchenChaos_Server.Room
         //    public DateTime ExpireUtc;
         //}
 
+        private CancellationTokenSource gameCts;
+
         public ServerRoom(int _id, string _name, int _maxPlayer, int _ownerPlayerId)
         {
             RoomId = _id;
@@ -85,10 +90,10 @@ namespace KitchenChaos_Server.Room
             clients = new List<ServerClient>();
             players = new Dictionary<int, ServerPlayer>();
 
-            CounterManager = new ServerCounterManager(this);
+            //CounterManager = new ServerCounterManager(this);
             RoomGameManager = new ServerGameManager(this);
-            RoomDeliveryManager = new ServerDeliveryManager(this);
-            ServerPlateManager = new ServerPlateManager(this);
+            //RoomDeliveryManager = new ServerDeliveryManager(this);
+            //ServerPlateManager = new ServerPlateManager(this);
         }
 
         public int AddClient(ServerClient _client)
@@ -322,7 +327,7 @@ namespace KitchenChaos_Server.Room
         /// <summary>
         /// 进入游戏场景
         /// </summary>
-        public void EnterGameScene(CancellationTokenSource _cts)
+        public void EnterGameScene()
         {
             lock (stateLock)
             {
@@ -331,10 +336,10 @@ namespace KitchenChaos_Server.Room
                 loadedGameScenePlayerIds.Clear();
                 sceneTransitionStartTimeUtc = DateTime.UtcNow;
 
-                //CounterManager = new ServerCounterManager(this);
+                CounterManager = new ServerCounterManager(this);
                 //RoomGameManager = new ServerGameManager(this, gameCts);
-                //RoomDeliveryManager = new ServerDeliveryManager(this);
-                //ServerPlateManager = new ServerPlateManager(this);
+                RoomDeliveryManager = new ServerDeliveryManager(this);
+                ServerPlateManager = new ServerPlateManager(this);
 
                 // 先广播权威玩家列表（含座位与准备状态），再广播场景切换
                 BroadcastAll(NetworkMessage.Create_RoomPlayerListSync(GetRoomPlayerInfo()));
@@ -407,8 +412,12 @@ namespace KitchenChaos_Server.Room
             //    客户端据此清掉上一局残留（待交付菜单、台面物品、盘子实体等），
             //    否则 DeliveryManagerUI 会显示上一局的订单、台面残留物品。
             SendFullSyncToAllLocked();
+
+            gameCts?.Cancel();
+            gameCts = new CancellationTokenSource();
+
             // 3) 启动服务器主循环
-            RoomGameManager.StartGame();
+            RoomGameManager.StartGame(gameCts);
 
             gameSceneTransitionStarted = false;
         }

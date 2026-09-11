@@ -5,7 +5,6 @@ using KitchenChaos_Server.Room;
 
 namespace KitchenChaos_Server.Manager
 {
-
     public class ServerDeliveryManager
     {
         private ServerRoom room;
@@ -59,6 +58,7 @@ namespace KitchenChaos_Server.Manager
                 waitingRecipeIndexes.Clear();
                 successfulRecipesAmount = 0;
                 spawnRecipeTimer = 0f;
+                isFirstDeliveryed = false;
             }
 
             Console.WriteLine("[ServerDeliveryManager] 新一局开始，订单与分数已重置");
