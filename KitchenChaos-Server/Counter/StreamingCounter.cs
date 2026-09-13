@@ -2,6 +2,7 @@
 using KitchenChaos_Server.Room;
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace KitchenChaos_Server.Counter
 {
@@ -132,6 +133,17 @@ namespace KitchenChaos_Server.Counter
                     Room.BroadcastAll(NetworkMessage.Create_CounterStateSync(CounterId, SteamingCounterState));
                 }
             }
+        }
+
+        public override void WriteSnapshot(BinaryWriter _writer)
+        {
+            _writer.Write(CounterId);
+            _writer.Write((byte)Type);
+            _writer.Write(ItemIndex);
+            _writer.Write(SteamingCounterState);       // 0/1/3
+            _writer.Write(SteamingProgressNormalized);
+            if (Ingredient >= 0) { _writer.Write(1); _writer.Write(Ingredient); }
+            else { _writer.Write(0); }
         }
 
         // ─────────────────────── 内部规则 ───────────────────────

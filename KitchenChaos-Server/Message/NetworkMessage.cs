@@ -133,7 +133,7 @@ namespace KitchenChaos_Server.Message
         public static byte[] Create_BackRoom()
         {
             using var ms = new MemoryStream();
-            return Pack(MessageType.BackRoom,ms.ToArray());
+            return Pack(MessageType.BackRoom, ms.ToArray());
         }
 
         public static byte[] Create_TimerSync(float _remaingTime)
@@ -205,7 +205,9 @@ namespace KitchenChaos_Server.Message
             (int id, string name, float x, float y, float z, float rotY)[] players,
             (int counterId, int itemIndex)[] counters,
             (int plateId, byte ownerType, int ownerId, int soIndex, List<int> ingredients)[] plates = null,
-            int[] recipeIndexes = null)
+            int[] recipeIndexes = null,
+            Action<BinaryWriter> _counterSnapshotWriter = null,
+            int _score = 0, float _remainingTime = 0f, byte _gameState = 0)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
@@ -260,6 +262,13 @@ namespace KitchenChaos_Server.Message
                 writer.Write(recipeIndex);
             }
 
+            if (_counterSnapshotWriter != null) _counterSnapshotWriter(writer);
+            else writer.Write(0);
+
+            writer.Write(_score);
+            writer.Write(_remainingTime);
+            writer.Write(_gameState);
+
             return Pack(MessageType.FullSync, ms.ToArray());
         }
 
@@ -289,7 +298,7 @@ namespace KitchenChaos_Server.Message
             writer.Write(_state);
             return Pack(MessageType.CounterStateSync, ms.ToArray());
         }
-        
+
         /// <summary>
         /// 操作台添加配料
         /// </summary>
@@ -302,14 +311,14 @@ namespace KitchenChaos_Server.Message
             var writer = new BinaryWriter(ms);
             writer.Write(_counterId);
             writer.Write(_ingredients);
-            return Pack(MessageType.CounterAddIngredient,ms.ToArray());
+            return Pack(MessageType.CounterAddIngredient, ms.ToArray());
         }
 
         #region 盘子相关
         /// <summary>
         /// 通知客户端盘子的拥有者发生改变
         /// </summary>
-        public static byte[] Create_PlateSpawned(int _counterId,int _plateId)
+        public static byte[] Create_PlateSpawned(int _counterId, int _plateId)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
@@ -400,13 +409,13 @@ namespace KitchenChaos_Server.Message
             return ReadString(reader);
         }
 
-        public static (int,bool) Parse_PlayerReady(byte[] _body)
+        public static (int, bool) Parse_PlayerReady(byte[] _body)
         {
-            var ms = new MemoryStream(_body);    
+            var ms = new MemoryStream(_body);
             var reader = new BinaryReader(ms);
             int playerId = reader.ReadInt32();
-            bool isReady = reader.ReadInt32() ==1 ? true : false;
-            return (playerId,isReady);
+            bool isReady = reader.ReadInt32() == 1 ? true : false;
+            return (playerId, isReady);
         }
 
         /// <summary>
@@ -467,7 +476,7 @@ namespace KitchenChaos_Server.Message
         /// <summary>
         /// 解析容器固定物品注册：counterId(int) + soIndex(int)
         /// </summary>
-        public static (int,int) Parse_RegisterContainerItem(byte[] _body)
+        public static (int, int) Parse_RegisterContainerItem(byte[] _body)
         {
             var ms = new MemoryStream(_body);
             var reader = new BinaryReader(ms);
@@ -476,7 +485,7 @@ namespace KitchenChaos_Server.Message
             return (counterId, soIndex);
         }
 
-        public static (int,List<BoilingRecipeSO>) Parse_RegisterBoilingRecipes(byte[] _data)
+        public static (int, List<BoilingRecipeSO>) Parse_RegisterBoilingRecipes(byte[] _data)
         {
             var ms = new MemoryStream(_data);
             var reader = new BinaryReader(ms);
@@ -503,14 +512,14 @@ namespace KitchenChaos_Server.Message
                 recipes.Add(so);
             }
 
-            return (counterId,recipes);
+            return (counterId, recipes);
         }
 
-        public static (int,List<CuttingRecipeSO>) Parse_RegisterCuttingRecipes(byte[] _data)
+        public static (int, List<CuttingRecipeSO>) Parse_RegisterCuttingRecipes(byte[] _data)
         {
             var ms = new MemoryStream(_data);
             var reader = new BinaryReader(ms);
-            int counterId = reader.ReadInt32(); 
+            int counterId = reader.ReadInt32();
             int count = reader.ReadInt32();
             List<CuttingRecipeSO> recipes = new List<CuttingRecipeSO>();
 
@@ -525,10 +534,10 @@ namespace KitchenChaos_Server.Message
                 recipes.Add(so);
             }
 
-            return (counterId,recipes);
+            return (counterId, recipes);
         }
 
-        public static (int,List<StreamingRecipeSO>) Parse_RegisterStreamingRecipes(byte[] _data)
+        public static (int, List<StreamingRecipeSO>) Parse_RegisterStreamingRecipes(byte[] _data)
         {
             var ms = new MemoryStream(_data);
             var reader = new BinaryReader(ms);
@@ -545,7 +554,7 @@ namespace KitchenChaos_Server.Message
                 recipes.Add(so);
             }
             return (counterId, recipes);
-        }   
+        }
 
         public static (int, int) Parse_RegisterPlateSpawnId(byte[] _data)
         {
@@ -553,7 +562,7 @@ namespace KitchenChaos_Server.Message
             var reader = new BinaryReader(ms);
             int counterId = reader.ReadInt32();
             int plateId = reader.ReadInt32();
-            return (counterId,plateId);
+            return (counterId, plateId);
         }
 
         /// <summary>
@@ -581,7 +590,7 @@ namespace KitchenChaos_Server.Message
             return recipes;
         }
 
-        public static (int,int) Parse_RegisterPlateSO(byte[] _body)
+        public static (int, int) Parse_RegisterPlateSO(byte[] _body)
         {
             var ms = new MemoryStream(_body);
             var reader = new BinaryReader(ms);
@@ -614,28 +623,28 @@ namespace KitchenChaos_Server.Message
         #endregion
 
         #region Room
-        public static byte[] Create_RoomCreated(int _roomId,string _roomName,int _maxPlayers)
+        public static byte[] Create_RoomCreated(int _roomId, string _roomName, int _maxPlayers)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
             writer.Write(_roomId);
-            WriteString(writer,_roomName);
+            WriteString(writer, _roomName);
             writer.Write(_maxPlayers);
-            return Pack(MessageType.RoomCreated,ms.ToArray());
+            return Pack(MessageType.RoomCreated, ms.ToArray());
         }
 
-        public static byte[] Create_RoomJoined(int _roomId, int _seadId,int _playerId,string _playerName,int _maxPlayer)
+        public static byte[] Create_RoomJoined(int _roomId, int _seadId, int _playerId, string _playerName, int _maxPlayer)
         {
             var ms = new MemoryStream();
-            var writer = new BinaryWriter(ms);  
+            var writer = new BinaryWriter(ms);
 
             writer.Write(_roomId);
             writer.Write(_seadId);
             writer.Write(_playerId);
-            WriteString(writer,_playerName);
+            WriteString(writer, _playerName);
             writer.Write(_maxPlayer);
 
-            return Pack(MessageType.RoomJoined,ms.ToArray());
+            return Pack(MessageType.RoomJoined, ms.ToArray());
         }
 
         public static byte[] Create_JoinedFailed(ERoomJoinFailReason _reason)
@@ -658,7 +667,7 @@ namespace KitchenChaos_Server.Message
                 writer.Write(_list[i].SeatId);
                 writer.Write(_list[i].PlayerId);
                 WriteString(writer, _list[i].Name);
-                writer.Write(_list[i].IsReady ? 1:0);
+                writer.Write(_list[i].IsReady ? 1 : 0);
             }
 
             return Pack(MessageType.RoomPlayerListSync, ms.ToArray());
@@ -677,7 +686,7 @@ namespace KitchenChaos_Server.Message
         /// </summary>
         /// <param name="_roomList"></param>
         /// <returns></returns>
-        public static byte[] Create_RequestRoomList(List<(int,string,int,int)> _roomList)
+        public static byte[] Create_RequestRoomList(List<(int, string, int, int)> _roomList)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
@@ -685,11 +694,11 @@ namespace KitchenChaos_Server.Message
             foreach (var room in _roomList)
             {
                 writer.Write(room.Item1);
-                WriteString(writer,room.Item2);
+                WriteString(writer, room.Item2);
                 writer.Write(room.Item3);
                 writer.Write(room.Item4);
             }
-            return Pack(MessageType.RequestRoomList,ms.ToArray());
+            return Pack(MessageType.RequestRoomList, ms.ToArray());
         }
 
         public static byte[] Create_StartGame(int _roomId)
@@ -705,17 +714,17 @@ namespace KitchenChaos_Server.Message
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms);
             writer.Write(_newOwnerPlayerId);
-            return Pack(MessageType.RoomOwnerChanged, ms.ToArray());    
+            return Pack(MessageType.RoomOwnerChanged, ms.ToArray());
         }
 
         #region 解析
-        public static (int maxPlayers,string roomName) Parse_CreateRoom(byte[] _data)
+        public static (int maxPlayers, string roomName) Parse_CreateRoom(byte[] _data)
         {
             var ms = new MemoryStream(_data);
             var reader = new BinaryReader(ms);
             int maxPlayers = reader.ReadInt32();
             string name = ReadString(reader);
-            return (maxPlayers,name);
+            return (maxPlayers, name);
         }
 
         public static int Parse_JoinRoom(byte[] _data)
@@ -741,28 +750,25 @@ namespace KitchenChaos_Server.Message
             return roomId;
         }
 
-        // 断线重连（D7）已暂时禁用
-        /*
         public static (int, int) Parse_ResumeGame(byte[] _data)
         {
-            using var ms = new MemoryStream();
+            using var ms = new MemoryStream(_data);
             using var reader = new BinaryReader(ms);
             int roomId = reader.ReadInt32();
             int playerId = reader.ReadInt32();
-            return (roomId,playerId);   
+            return (roomId, playerId);
         }
-        */
+
         #endregion
         #endregion
 
-        // 断线重连（D7）已暂时禁用
-        /*
-        public static byte[] Create_ResumeGameResult(bool _ok, int _playerId, float _x, float _y, float _z, float _rotY, int _heldItemId)
+        public static byte[] Create_ResumeGameResult(bool _ok, int _playerId, int _seadId, float _x, float _y, float _z, float _rotY, int _heldItemId)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
             writer.Write(_ok ? (byte)1 : (byte)0);
             writer.Write(_playerId);
+            writer.Write(_seadId);
             writer.Write(_x);
             writer.Write(_y);
             writer.Write(_z);
@@ -770,6 +776,6 @@ namespace KitchenChaos_Server.Message
             writer.Write(_heldItemId);
             return Pack(MessageType.ResumeGameResult, ms.ToArray());
         }
-        */
+
     }
 }

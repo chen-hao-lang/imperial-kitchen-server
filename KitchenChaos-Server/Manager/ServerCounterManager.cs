@@ -3,6 +3,7 @@ using KitchenChaos_Server.Message;
 using KitchenChaos_Server.Room;
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace KitchenChaos_Server.Manager
 {
@@ -132,6 +133,12 @@ namespace KitchenChaos_Server.Manager
                 list[i++] = (c.CounterId, c.ItemIndex);
             }
             return list;
+        }
+
+        public void WriteSnapshot(BinaryWriter _writer)
+        {
+            _writer.Write(counters.Count);
+            foreach (var counter in counters.Values) counter.WriteSnapshot(_writer);
         }
     }
 }

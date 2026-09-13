@@ -3,6 +3,7 @@ using KitchenChaos_Server.Manager;
 using KitchenChaos_Server.Message;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -36,6 +37,7 @@ namespace KitchenChaos_Server.Room
         public ServerGameManager RoomGameManager { get; private set; }
         public ServerDeliveryManager RoomDeliveryManager { get; private set; }
         public ServerPlateManager ServerPlateManager { get; private set; }
+        public readonly ReconnectManager reconnectManager = new ReconnectManager(30);
 
         /// <summary>
         /// 房间级状态锁：串行化所有对共享状态（clients/players/counters/plates）的访问。
@@ -52,13 +54,6 @@ namespace KitchenChaos_Server.Room
             get { lock (stateLock) { return gameSceneTransitionStarted; } }
         }
 
-        // 断线重连（D7）已暂时禁用
-        ///// <summary>局内掉线席位保留时长（秒），超过即彻底移除</summary>
-        //private const double RECONNECT_GRACE_SECONDS = 20.0;
-
-        ///// <summary>旧 PlayerId → 局内掉线暂存席（D7）</summary>
-        //private readonly Dictionary<int, ReconnectSlot> reconnectSlots = new Dictionary<int, ReconnectSlot>();
-
         /// <summary>已经上报 GameScene 加载完成的玩家</summary>
         private readonly HashSet<int> loadedGameScenePlayerIds = new HashSet<int>();
 
@@ -67,16 +62,6 @@ namespace KitchenChaos_Server.Room
 
         /// <summary>等齐所有人上报的最长等待（秒），防开局死锁</summary>
         private const double LOADED_WAIT_TIMEOUT_SECONDS = 8.0;
-
-        // 断线重连（D7）已暂时禁用
-        ///// <summary>局内掉线暂存席（D7），大厅阶段不启用</summary>
-        //public class ReconnectSlot
-        //{
-        //    /// <summary>保留玩家对象（位置/手持/座位）</summary>
-        //    public ServerPlayer Player;
-        //    /// <summary>认领截止时间</summary>
-        //    public DateTime ExpireUtc;
-        //}
 
         private CancellationTokenSource gameCts;
 
@@ -171,125 +156,29 @@ namespace KitchenChaos_Server.Room
         }
 
         /// <summary>
-        /// 局内断开：断线重连（D7）已暂时禁用，不再保留席位，直接把玩家移出房间。
-        /// ⚠️ 必须真正移除，否则玩家会残留在 players 字典（幽灵玩家）：
-        /// RoomPlayerListSync 会带上永远未准备的玩家 → 客户端 startBtn 永远不可用、CanStartGame 永远失败。
-        /// 返回“房间是否已空”（空则 RoomManager 回收）。
-        /// 调用方已持有 stateLock。
+        /// 处理玩家断线的情况
         /// </summary>
         private bool HandleInGameDisconnect(ServerClient _client)
         {
+            // 从客户端获取断线的玩家
             int leavingPlayerId = _client.Player.PlayerId;
-
-            // 从“在线集合”移除，同时清掉玩家登记（无暂存席）
+            ServerPlayer held = _client.Player;
+            
+            // 移除玩家
             clients.Remove(_client);
             players.Remove(leavingPlayerId);
             _client.CurrentRoom = null;
 
-            // 房主离开且还有人 → 选最小 PlayerId 作为新房主并广播
-            if (leavingPlayerId == OwnPlayerId && players.Count > 0)
-            {
-                int newOwnerPlayerId = ServerRule.PickNewOwnerPlayerId(players.Keys);
-                OwnPlayerId = newOwnerPlayerId;
-                Console.WriteLine($"[ServerRoom] 房间 {RoomId} 房主转移：{leavingPlayerId} → {newOwnerPlayerId}");
-                BroadcastAll(NetworkMessage.Create_RoomOwnerChanged(newOwnerPlayerId));
-            }
+            // 保留玩家的信息
+            reconnectManager.HoldSeat(held);
 
-            // 通知其他客户端：该玩家离开（远程模型移除），并刷新权威玩家列表
+            // 广播
             BroadcastAll(NetworkMessage.Create_PlayerLeft(leavingPlayerId));
-            BroadcastAll(NetworkMessage.Create_RoomPlayerListSync(GetRoomPlayerInfo()));
 
-            Console.WriteLine($"[ServerRoom] 房间 {RoomId} 玩家 {leavingPlayerId} 局内掉线，已移除（在线 {clients.Count} 人）");
+            if (gameSceneTransitionStarted) TryStartGameplayIfAllLoaded();
 
-            // 转场中有人掉线：剩余玩家可能已全部上报 loaded，重估开局（避免死等 8s 超时兜底）
-            if (gameSceneTransitionStarted)
-            {
-                TryStartGameplayIfAllLoaded();
-            }
-
-            // 房间已无人（在线）→ 返回空；RoomManager 会销毁房间
             return clients.Count == 0;
         }
-
-        // 断线重连（D7）已暂时禁用
-        /*
-        /// <summary>清理已过期的局内暂存席（线程安全，可由游戏循环等任意线程周期调用）。</summary>
-        public void PruneReconnectSlots()
-        {
-            //lock (stateLock)
-            //{
-            //    if (reconnectSlots.Count == 0) return;
-
-            //    foreach (var kv in reconnectSlots.ToList())
-            //    {
-            //        if (DateTime.UtcNow > kv.Value.ExpireUtc)
-            //        {
-            //            Console.WriteLine($"[ServerRoom] 房间 {RoomId} 玩家 {kv.Key} 重连窗口过期，席位已释放");
-            //            reconnectSlots.Remove(kv.Key);
-            //        }
-            //    }
-            //}
-        }
-        */
-
-        // 断线重连（D7）已暂时禁用
-        /*
-        /// <summary>
-        /// 认领局内席位：验证暂存席存在/未过期，把新连接绑定到旧 ServerPlayer 并重新加入在线集合。
-        /// </summary>
-        public bool TryResumePlayer(ServerClient _client, int _oldPlayerId)
-        {
-            lock (stateLock)
-            {
-                if (!reconnectSlots.TryGetValue(_oldPlayerId, out var slot))
-                {
-                    Console.WriteLine($"[ServerRoom] 房间 {RoomId} 无 {_oldPlayerId} 的暂存席，认领失败");
-                    return false;
-                }
-
-                if (DateTime.UtcNow > slot.ExpireUtc)
-                {
-                    reconnectSlots.Remove(_oldPlayerId);
-                    Console.WriteLine($"[ServerRoom] 房间 {RoomId} {_oldPlayerId} 暂存席已过期，认领失败");
-                    return false;
-                }
-
-                if (_client.Player.PlayerId == _oldPlayerId)
-                {
-                    Console.WriteLine($"[ServerRoom] 房间 {RoomId} 玩家 {_oldPlayerId} 已在房间，无需认领");
-                    return false;
-                }
-
-                ServerPlayer resumed = slot.Player;
-                reconnectSlots.Remove(_oldPlayerId);
-
-                // 新连接认领旧身份：把新 ServerClient 的 Player 替换成旧玩家对象，并重入在线集合
-                _client.Player = resumed;
-                resumed.AttachClient(_client);
-                _client.CurrentRoom = this;
-
-                clients.Add(_client);
-                players[resumed.PlayerId] = resumed;
-
-                Console.WriteLine($"[ServerRoom] 房间 {RoomId} 玩家 {resumed.PlayerId} 认领成功，重新加入");
-
-                // 给认领者本人：旧 PlayerId、最后位置、手持（普通物）；盘子由 FullSync 恢复
-                _client.Send(NetworkMessage.Create_ResumeGameResult(
-                    true,
-                    resumed.PlayerId,
-                    resumed.LastPosX,
-                    resumed.LastPosY,
-                    resumed.LastPosZ,
-                    resumed.LastRotY,
-                    resumed.HeldItemIndex));
-
-                // 给全房间（含认领者）重发 FullSync：远程玩家/台子/盘子/订单一键重建
-                SendFullSyncToAllLocked();
-
-                return true;
-            }
-        }
-        */
 
         public void BroadcastAll(byte[] _data)
         {
@@ -367,6 +256,124 @@ namespace KitchenChaos_Server.Room
             }
         }
 
+        public bool RemoveClientExplicit(ServerClient _client)
+        {
+            lock (stateLock)
+            {
+                if (!clients.Contains(_client)) return false;
+
+                // 显式离开 = 永久移除：释放可能存在的暂存席，不保留重连窗口
+                reconnectManager.ReleaseSeat(_client.Player.PlayerId);
+
+                int leavingPlayerId = _client.Player.PlayerId;
+                clients.Remove(_client);
+                players.Remove(leavingPlayerId);
+                _client.CurrentRoom = null;
+
+                // 房主离开且还有人 → 选最小 PlayerId 作为新房主并广播
+                if (leavingPlayerId == OwnPlayerId && players.Count > 0)
+                {
+                    int newOwnerPlayerId = ServerRule.PickNewOwnerPlayerId(players.Keys);
+                    OwnPlayerId = newOwnerPlayerId;
+                    Console.WriteLine($"[ServerRoom] 房间 {RoomId} 房主转移：{leavingPlayerId} → {newOwnerPlayerId}");
+                    BroadcastAll(NetworkMessage.Create_RoomOwnerChanged(newOwnerPlayerId));
+                }
+
+                // 通知剩余客户端玩家离开，并刷新权威房间列表（含准备状态）
+                BroadcastExcept(_client, NetworkMessage.Create_PlayerLeft(leavingPlayerId));
+                BroadcastExcept(_client, NetworkMessage.Create_RoomPlayerListSync(GetRoomPlayerInfo()));
+
+                return clients.Count == 0;
+            }
+        }
+
+        /// <summary>
+        /// 断线重连兜底：旧连接可能尚未被判超时（编辑器/开发版客户端超时可长达 600s），
+        /// 此时房间内仍存在该 PlayerId 的在线记录。先强制踢掉旧连接，再把玩家对象放入暂存席，
+        /// 供紧随其后的 TryResumePlayer 统一认领。
+        /// </summary>
+        /// <returns>是否接管成功（房间内确实存在该在线玩家）</returns>
+        public bool DetachStaleClient(int _oldPlayerId)
+        {
+            lock (stateLock)
+            {
+                if (!players.TryGetValue(_oldPlayerId, out var player)) return false;
+
+                ServerClient stale = null;
+                for (int i = 0; i < clients.Count; i++)
+                {
+                    var c = clients[i];
+                    if (c.Player != null && c.Player.PlayerId == _oldPlayerId)
+                    {
+                        stale = c;
+                        break;
+                    }
+                }
+
+                if (stale != null)
+                {
+                    // 只摘除当前房间的登记，旧连接的 ReceiveLoop 稍后退出时
+                    // 会走 OnClientDisconnected → LeaveRoom，但那时 CurrentRoom 已为 null，不会重复移除。
+                    stale.CurrentRoom = null;
+                    clients.Remove(stale);
+                    stale.Disconnect();
+                    Console.WriteLine($"[ServerRoom] 房间 {RoomId} 接管仍在线的旧连接 {_oldPlayerId}");
+                }
+
+                players.Remove(_oldPlayerId);
+                reconnectManager.ReleaseSeat(_oldPlayerId);
+                reconnectManager.HoldSeat(player);   // 直接登记暂存席，等待认领
+
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// 尝试认领局内席位
+        /// </summary>
+        /// <param name="_client"></param>
+        /// <param name="_oldPlayerId"></param>
+        /// <returns></returns>
+        public bool TryResumePlayer(ServerClient _client, int _oldPlayerId)
+        {
+            lock (stateLock)
+            {
+                if (!reconnectManager.TryTakeSeat(_oldPlayerId, out var resumed))
+                {
+                    Console.WriteLine($"[ServerRoom] 房间 {RoomId} 无 {_oldPlayerId} 的有效暂存席，认领失败");
+                    return false;   
+                }
+
+                _client.Player = resumed;
+                resumed.AttachClient(_client);
+                _client.CurrentRoom = this;
+
+                clients.Add(_client);
+                players[resumed.PlayerId] = resumed;
+
+                _client.Send(NetworkMessage.Create_ResumeGameResult(
+                    true,resumed.PlayerId,resumed.SeatId,
+                    resumed.LastPosX,resumed.LastPosY,resumed.LastPosZ,resumed.LastRotY,
+                    resumed.HeldItemIndex));
+
+                SendFullSyncToAllLocked();
+
+                Console.WriteLine($"[ServerRoom] 房间 {RoomId} 玩家 {resumed.PlayerId} 认领成功");
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// 周期清理过期的席位
+        /// </summary>
+        public void PruneReconnectSeats()
+        {
+            lock (stateLock)
+            {
+                reconnectManager.Prune();
+            }
+        }
+
         /// <summary>
         /// 收到客户端“GameScene 加载完成”：记录后尝试开局。
         /// 全员到齐或超过等待时限（防有人掉线卡死开局）都会进入开局流程。
@@ -438,6 +445,9 @@ namespace KitchenChaos_Server.Room
             }
 
             int[] recipes = RoomDeliveryManager.GetWaitingRecipeIndexes();
+            int score = RoomDeliveryManager.SuccessfulRecipesAmount;
+            float remaining = RoomGameManager.RemainingTime;
+            byte state = (byte)RoomGameManager.GameStata;
 
             foreach (var target in clients)
             {
@@ -450,7 +460,9 @@ namespace KitchenChaos_Server.Room
                 }
 
                 target.Send(NetworkMessage.Create_FullSync(
-                    playersList.ToArray(), counters, platesList.ToArray(), recipes));
+                    playersList.ToArray(), counters, platesList.ToArray(), recipes,
+                    writer => CounterManager.WriteSnapshot(writer),
+                    score,remaining,state));
             }
         }
 
@@ -472,7 +484,7 @@ namespace KitchenChaos_Server.Room
                 CounterManager.Clear();
                 RoomDeliveryManager.Clear();
                 ServerPlateManager.Clear();
-                //reconnectSlots.Clear(); // 断线重连（D7）已暂时禁用
+                reconnectManager.Clear();   // 释放全部重连暂存席
                 loadedGameScenePlayerIds.Clear();
                 gameSceneTransitionStarted = false;
             }
@@ -494,7 +506,7 @@ namespace KitchenChaos_Server.Room
                 CounterManager.Clear();
                 RoomDeliveryManager.Clear();
                 ServerPlateManager.Clear();
-                //reconnectSlots.Clear(); // 断线重连（D7）已暂时禁用
+                reconnectManager.Clear();   // 释放全部重连暂存席
                 loadedGameScenePlayerIds.Clear();
                 gameSceneTransitionStarted = false;
             }

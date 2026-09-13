@@ -157,6 +157,9 @@ namespace KitchenChaos_Server
                     client.Disconnect();
                 }
             }
+
+            // 顺带清理各房间过期的重连暂存席
+            roomManager?.PruneReconnectSeats();
         }
         /// <summary>
         /// 处理心跳消息：解析标志位（bit0 = 调试客户端）。
@@ -265,9 +268,9 @@ namespace KitchenChaos_Server
                     HandleHeartbeat(_client, _data);
                     break;
                 // 断线重连（D7）已暂时禁用
-                //case MessageType.C2S_ResumeGame:
-                //    HandleResumeGame(_client, _data);
-                //    break;
+                case MessageType.C2S_ResumeGame:
+                    HandleResumeGame(_client, _data);
+                    break;
                 case MessageType.C2S_CreateRoom:
                     HandleCreateRoom(_client,_data);
                     break;
@@ -275,7 +278,7 @@ namespace KitchenChaos_Server
                     HandleJoinRoom(_client,_data);
                     break;
                 case MessageType.C2S_LeaveRoom:
-                    roomManager.LeaveRoom(_client);
+                    roomManager.LeaveRoomExplicit(_client);
                     break;
                 case MessageType.C2S_DestroyRoom:
                     HandleDestryoRoom(_client,_data);
@@ -358,8 +361,6 @@ namespace KitchenChaos_Server
             roomManager.EnterGameScene(_client,roomId);
         }
 
-        // 断线重连（D7）已暂时禁用
-        /*
         /// <summary>
         /// 重连认领：玩家重新连上后，请求认领自己在某房间的局内席位。
         /// </summary>
@@ -368,6 +369,6 @@ namespace KitchenChaos_Server
             var (roomId, oldPlayerId) = NetworkMessage.Parse_ResumeGame(_data);
             roomManager.ResumeGame(_client, roomId, oldPlayerId);
         }
-        */
+
     }
 }

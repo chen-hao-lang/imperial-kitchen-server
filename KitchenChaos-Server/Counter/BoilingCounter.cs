@@ -2,6 +2,7 @@
 using KitchenChaos_Server.Room;
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace KitchenChaos_Server.Counter
 {
@@ -119,6 +120,17 @@ namespace KitchenChaos_Server.Counter
                     Room.BroadcastAll(NetworkMessage.Create_CounterStateSync(CounterId, BoilintCounterState));
                 }
             }
+        }
+
+        public override void WriteSnapshot(BinaryWriter _writer)
+        {
+            _writer.Write(CounterId);
+            _writer.Write((byte)Type);
+            _writer.Write(ItemIndex);// 制作完成的菜品
+            _writer.Write(BoilintCounterState);// 0/1/2/3
+            _writer.Write(BoilingProgressNormalized); // 0~1
+            _writer.Write(Ingredients.Count);// 当前锅里的配料数量
+            foreach (var ing in Ingredients) _writer.Write(ing);// 锅里的配料
         }
 
         // ─────────────────────── 内部规则 ───────────────────────

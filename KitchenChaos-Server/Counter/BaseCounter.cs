@@ -1,4 +1,5 @@
 ﻿using KitchenChaos_Server.Room;
+using System.IO;
 
 namespace KitchenChaos_Server.Counter
 {
@@ -28,5 +29,19 @@ namespace KitchenChaos_Server.Counter
         public virtual void OnPlayerInteract(ServerPlayer _player) { }
 
         public virtual void OnPlayerInteractAlternate(ServerPlayer _player) { }
+
+        /// <summary>
+        /// 写入当前操作台的快照
+        /// </summary>
+        /// <param name="_writer"></param>
+        public virtual void WriteSnapshot(BinaryWriter _writer)
+        {
+            _writer.Write(CounterId);
+            _writer.Write((byte)Type);
+            _writer.Write(ItemIndex);
+            _writer.Write((byte)0);   // state
+            _writer.Write(0f);        // progress
+            _writer.Write(0);         // ingredientCount
+        }
     }
 }

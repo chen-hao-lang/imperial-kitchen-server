@@ -126,6 +126,35 @@ namespace KitchenChaos_Server.Room
                 RemoveEmptyRoom(room.RoomId);
         }
 
+        /// <summary>
+        /// 玩家【显式】离开房间（C2S_LeaveRoom）：永久移除，不保留重连席位。
+        /// </summary>
+        public void LeaveRoomExplicit(ServerClient _client)
+        {
+            var room = _client.CurrentRoom;
+            if (room == null)
+                return;
+
+            bool roomIsEmpty = room.RemoveClientExplicit(_client);
+            if (roomIsEmpty)
+                RemoveEmptyRoom(room.RoomId);
+        }
+
+        /// <summary>周期清理所有房间的过期重连席位（由心跳线程调用）。</summary>
+        public void PruneReconnectSeats()
+        {
+            List<ServerRoom> snapshot;
+            lock (roomsLock)
+            {
+                snapshot = new List<ServerRoom>(rooms.Values);
+            }
+
+            foreach (var room in snapshot)
+            {
+                room.PruneReconnectSeats();
+            }
+        }
+
         /// <summary>最后一名成员离开/掉线后回收空房（不要求离开者是原始房主）</summary>
         public void RemoveEmptyRoom(int _roomId)
         {
@@ -162,45 +191,33 @@ namespace KitchenChaos_Server.Room
             Console.WriteLine($"[ServerRoomManager] 房间 {_roomId} 已销毁");
         }
 
-        // 断线重连（D7）已暂时禁用
-        /*
         /// <summary>
         /// 重连认领入口。认领成功：房间把新连接绑定为旧玩家、给本人 ResumeGameResult、给全房间 FullSync。
         /// </summary>
         public void ResumeGame(ServerClient _client, int _roomId, int _oldPlayerId)
         {
             ServerRoom room;
-            lock (roomsLock)
+            lock (roomsLock) 
             {
-                if (!rooms.TryGetValue(_roomId, out room))
-                {
-                    room = null;
-                }
+                rooms.TryGetValue(_roomId, out room);
             }
 
             if (room == null)
             {
-                SendResumeFailed(_client);
+                _client.Send(NetworkMessage.Create_ResumeGameResult(false,-1,-1,0,0,0,0,0));
                 return;
             }
+
+            // 兜底：旧连接可能尚未被判超时（编辑器/开发版超时可长达 600s），
+            // 先把仍在房间里的旧连接踢掉、把玩家对象移入暂存席，再统一认领。
+            room.DetachStaleClient(_oldPlayerId);
 
             if (!room.TryResumePlayer(_client, _oldPlayerId))
             {
-                SendResumeFailed(_client);
+                _client.Send(NetworkMessage.Create_ResumeGameResult(false,-1,-1,0,0,0,0,0));
                 return;
             }
-
-            // 认领成功后：通知其他客户端该玩家回来了（客户端会重新生成其远程模型）
-            room.BroadcastAll(NetworkMessage.Create_RoomPlayerListSync(room.GetRoomPlayerInfo()));
         }
-
-        private static void SendResumeFailed(ServerClient _client)
-        {
-            // ok=0；其余字段填充占位，客户端只认 ok
-            _client.Send(NetworkMessage.Create_ResumeGameResult(
-                false, -1, 0f, 0f, 0f, 0f, -1));
-        }
-        */
 
         /// <summary>
         /// 移除所有房间

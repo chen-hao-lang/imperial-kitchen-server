@@ -3,6 +3,7 @@ using KitchenChaos_Server.Message;
 using KitchenChaos_Server.Room;
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace KitchenChaos_Server
 {
@@ -59,6 +60,16 @@ namespace KitchenChaos_Server
                 Room.BroadcastAll(NetworkMessage.Create_InteractionSync(CounterId, ItemIndex, -1, -1));
                 Room.BroadcastAll(NetworkMessage.Create_CounterProgressSync(CounterId, 1.0f));
             }
+        }
+
+        public override void WriteSnapshot(BinaryWriter _writer)
+        {
+            _writer.Write(CounterId);
+            _writer.Write((byte)Type);
+            _writer.Write(ItemIndex);
+            _writer.Write((byte)(IsCutEnd ? 3 : 1));// 1=在切, 3=切完
+            _writer.Write(CuttingProgressNormalized);
+            _writer.Write(0);
         }
 
         public bool CanCat(int _input) => TryGetCuttingRecipe(_input, out _);

@@ -90,9 +90,9 @@
     PlayerReady = 36,             // 玩家准备
     StartGame = 37,               // 开始游戏
     RoomOwnerChanged = 38,          // 房主变更 
-    //ResumeGameResult = 40,          // 断线重连（D7）已暂时禁用
+    ResumeGameResult = 40,          // 断线重连（D7）已暂时禁用
 
     C2S_HeartBeat = 138,
-    //C2S_ResumeGame = 131           // 断线重连（D7）已暂时禁用
+    C2S_ResumeGame = 132// 断线重连（D7）已暂时禁用
     #endregion
 }

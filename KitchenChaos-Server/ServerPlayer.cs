@@ -27,6 +27,6 @@ namespace KitchenChaos_Server
 
         // 断线重连（D7）已暂时禁用
         ///// <summary>重连认领时把玩家对象重新绑定到新连接（D7）</summary>
-        //public void AttachClient(ServerClient _client) => client = _client;
+        public void AttachClient(ServerClient _client) => client = _client;
     }
 }
