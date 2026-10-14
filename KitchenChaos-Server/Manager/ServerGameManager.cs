@@ -114,8 +114,7 @@ namespace KitchenChaos_Server
 
                 while (!Ct.IsCancellationRequested)
                 {
-                    room.CounterManager.UpdateAll(TICK_INTERVAL);
-                    room.RoomDeliveryManager.Update(TICK_INTERVAL);
+                    room.TickUpdate(TICK_INTERVAL);
 
                     UpdateGameStat(TICK_INTERVAL);
 

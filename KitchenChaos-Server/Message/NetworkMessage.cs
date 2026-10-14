@@ -701,11 +701,16 @@ namespace KitchenChaos_Server.Message
             return Pack(MessageType.RequestRoomList, ms.ToArray());
         }
 
-        public static byte[] Create_StartGame(int _roomId)
+        /// <summary>
+        /// 开始游戏广播：房间号 + 房主选定的关卡索引。
+        /// 关卡索引为协议扩展字段，客户端据此加载对应关卡场景（全房一致）。
+        /// </summary>
+        public static byte[] Create_StartGame(int _roomId, int _levelIndex)
         {
             var ms = new MemoryStream();
             var writer = new BinaryWriter(ms);
             writer.Write(_roomId);
+            writer.Write(_levelIndex);
             return Pack(MessageType.StartGame, ms.ToArray());
         }
 
@@ -742,12 +747,19 @@ namespace KitchenChaos_Server.Message
             return roomId;
         }
 
-        public static int Parse_StartGame(byte[] _data)
+        /// <summary>
+        /// 解析"请求进入游戏场景"（客户端 → 服务端）：房间号 + 房主选择的关卡索引。
+        /// 关卡索引缺省时回落到关卡 1（向后兼容旧客户端）。
+        /// </summary>
+        public static (int roomId, int levelIndex) Parse_StartGame(byte[] _data)
         {
             var ms = new MemoryStream(_data);
             var reader = new BinaryReader(ms);
             int roomId = reader.ReadInt32();
-            return roomId;
+            int levelIndex = ms.Position < ms.Length
+                ? reader.ReadInt32()
+                : ServerRule.MIN_LEVEL_INDEX;
+            return (roomId, levelIndex);
         }
 
         public static (int, int) Parse_ResumeGame(byte[] _data)

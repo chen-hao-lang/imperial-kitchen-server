@@ -36,6 +36,8 @@ namespace KitchenChaos_Server
         /// </summary>
         public bool IsDebugClient { get; private set; }
 
+        private readonly object sendLock = new object();
+
         public ServerClient(int _playerId, TcpClient _client, GameServer _server)
         {
             Player = new ServerPlayer(_playerId,this);
@@ -162,8 +164,11 @@ namespace KitchenChaos_Server
 
             try
             {
-                stream.Write(data, 0, data.Length);
-                stream.Flush();
+                lock (sendLock)
+                {
+                    stream.Write(data, 0, data.Length);
+                    stream.Flush();
+                }
             }
             catch (Exception ex)
             {

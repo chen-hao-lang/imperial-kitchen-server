@@ -78,7 +78,7 @@
     C2S_DestroyRoom = 123,        // 房主解散房间
     C2S_RequestRoomList = 125,    // 请求房间列表
     C2S_PlayerReady = 126,        // 玩家准备就绪
-    C2S_RequestEnterGameScene = 127,          // 开始游戏
+    C2S_RequestEnterGameScene = 127,          // 开始游戏（roomId + 关卡索引，由房主上报）
 
     // 解析（服务端 → 客户端）
     RoomCreated = 30,             // 房间创建成功，附带房间号
@@ -88,7 +88,7 @@
     RoomDestroyed = 34,           // 房间被解散
     RequestRoomList = 35,         // 房间列表
     PlayerReady = 36,             // 玩家准备
-    StartGame = 37,               // 开始游戏
+    StartGame = 37,               // 开始游戏（roomId + 关卡索引，全房进入同一关卡）
     RoomOwnerChanged = 38,          // 房主变更 
     ResumeGameResult = 40,          // 断线重连（D7）已暂时禁用
 

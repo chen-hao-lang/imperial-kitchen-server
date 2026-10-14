@@ -3,10 +3,8 @@ using KitchenChaos_Server.Manager;
 using KitchenChaos_Server.Message;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace KitchenChaos_Server.Room
 {
@@ -54,6 +52,9 @@ namespace KitchenChaos_Server.Room
             get { lock (stateLock) { return gameSceneTransitionStarted; } }
         }
 
+        /// <summary>本局选定的关卡索引（房主在关卡选择面板选定，全房一致）。仅在 stateLock 内读写。</summary>
+        private int selectedLevelIndex = ServerRule.MIN_LEVEL_INDEX;
+
         /// <summary>已经上报 GameScene 加载完成的玩家</summary>
         private readonly HashSet<int> loadedGameScenePlayerIds = new HashSet<int>();
 
@@ -75,12 +76,14 @@ namespace KitchenChaos_Server.Room
             clients = new List<ServerClient>();
             players = new Dictionary<int, ServerPlayer>();
 
-            //CounterManager = new ServerCounterManager(this);
             RoomGameManager = new ServerGameManager(this);
-            //RoomDeliveryManager = new ServerDeliveryManager(this);
-            //ServerPlateManager = new ServerPlateManager(this);
         }
 
+        /// <summary>
+        /// 添加客户端
+        /// </summary>
+        /// <param name="_client"></param>
+        /// <returns></returns>
         public int AddClient(ServerClient _client)
         {
             lock (stateLock)
@@ -99,9 +102,6 @@ namespace KitchenChaos_Server.Room
                     int seatId = players.Count;// 给客户端的玩家分配座位id
                     _client.Player.SeatId = seatId;
                     players.Add(_client.Player.PlayerId,_client.Player);
-
-                    //gameManager.OnPlayerConnected(_client.Player.PlayerId);
-
                     return seatId;
                 }
                 else
@@ -113,6 +113,11 @@ namespace KitchenChaos_Server.Room
             }
         }
 
+        /// <summary>
+        /// 移除客户端
+        /// </summary>
+        /// <param name="_client"></param>
+        /// <returns></returns>
         public bool RemoveClient(ServerClient _client)
         {
             lock (stateLock)
@@ -152,6 +157,15 @@ namespace KitchenChaos_Server.Room
                 BroadcastExcept(_client, NetworkMessage.Create_RoomPlayerListSync(GetRoomPlayerInfo()));
 
                 return clients.Count == 0;
+            }
+        }
+
+        public void TickUpdate(float _deltaTime)
+        {
+            lock (stateLock)
+            {
+                CounterManager?.UpdateAll(_deltaTime);
+                RoomDeliveryManager?.Update(_deltaTime);
             }
         }
 
@@ -214,9 +228,10 @@ namespace KitchenChaos_Server.Room
         }
 
         /// <summary>
-        /// 进入游戏场景
+        /// 进入游戏场景（由房主请求触发）
         /// </summary>
-        public void EnterGameScene()
+        /// <param name="_levelIndex">房主选定的关卡索引（服务端会收敛到合法范围）</param>
+        public void EnterGameScene(int _levelIndex)
         {
             lock (stateLock)
             {
@@ -224,17 +239,18 @@ namespace KitchenChaos_Server.Room
                 gameSceneTransitionStarted = true;
                 loadedGameScenePlayerIds.Clear();
                 sceneTransitionStartTimeUtc = DateTime.UtcNow;
+                selectedLevelIndex = ServerRule.ClampLevelIndex(_levelIndex);
 
                 CounterManager = new ServerCounterManager(this);
                 //RoomGameManager = new ServerGameManager(this, gameCts);
                 RoomDeliveryManager = new ServerDeliveryManager(this);
                 ServerPlateManager = new ServerPlateManager(this);
 
-                // 先广播权威玩家列表（含座位与准备状态），再广播场景切换
+                // 先广播权威玩家列表（含座位与准备状态），再广播场景切换（携带关卡索引）
                 BroadcastAll(NetworkMessage.Create_RoomPlayerListSync(GetRoomPlayerInfo()));
-                BroadcastAll(NetworkMessage.Create_StartGame(RoomId));
+                BroadcastAll(NetworkMessage.Create_StartGame(RoomId, selectedLevelIndex));
 
-                Console.WriteLine($"[ServerRoom] 房间 {RoomId} 开始转场 GameScene");
+                Console.WriteLine($"[ServerRoom] 房间 {RoomId} 开始转场游戏场景（关卡 {selectedLevelIndex}）");
             }
         }
 
@@ -460,9 +476,14 @@ namespace KitchenChaos_Server.Room
                 }
 
                 target.Send(NetworkMessage.Create_FullSync(
-                    playersList.ToArray(), counters, platesList.ToArray(), recipes,
+                    playersList.ToArray(), 
+                    counters, 
+                    platesList.ToArray(), 
+                    recipes,
                     writer => CounterManager.WriteSnapshot(writer),
-                    score,remaining,state));
+                    score,
+                    remaining,
+                    state));
             }
         }
 
@@ -481,12 +502,15 @@ namespace KitchenChaos_Server.Room
                 }
                 clients.Clear();
                 players.Clear();
-                CounterManager.Clear();
-                RoomDeliveryManager.Clear();
-                ServerPlateManager.Clear();
+
+                CounterManager?.Clear();
+                RoomDeliveryManager?.Clear();
+                ServerPlateManager?.Clear();
+
                 reconnectManager.Clear();   // 释放全部重连暂存席
                 loadedGameScenePlayerIds.Clear();
                 gameSceneTransitionStarted = false;
+                selectedLevelIndex = ServerRule.MIN_LEVEL_INDEX;
             }
         }
 
@@ -509,6 +533,7 @@ namespace KitchenChaos_Server.Room
                 reconnectManager.Clear();   // 释放全部重连暂存席
                 loadedGameScenePlayerIds.Clear();
                 gameSceneTransitionStarted = false;
+                selectedLevelIndex = ServerRule.MIN_LEVEL_INDEX;   // 关卡选择随本局结束一起复位
             }
         }
 

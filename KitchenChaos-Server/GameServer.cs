@@ -351,14 +351,15 @@ namespace KitchenChaos_Server
         }
 
         /// <summary>
-        /// 请求进入游戏场景
+        /// 请求进入游戏场景（房主在关卡选择面板选定关卡后上报）
         /// </summary>
-        /// <param name="_data"></param>
+        /// <param name="_client">发起请求的客户端</param>
+        /// <param name="_data">房间号 + 关卡索引</param>
         private void HandleRequestEnterGameScene(ServerClient _client,byte[] _data)
         {
-            var roomId = NetworkMessage.Parse_StartGame(_data);
-            // 通知该房间内的所有客户端，转移场景
-            roomManager.EnterGameScene(_client,roomId);
+            var (roomId, levelIndex) = NetworkMessage.Parse_StartGame(_data);
+            // 通知该房间内的所有客户端，转移场景（携带房主选择的关卡，全房一致）
+            roomManager.EnterGameScene(_client,roomId,levelIndex);
         }
 
         /// <summary>

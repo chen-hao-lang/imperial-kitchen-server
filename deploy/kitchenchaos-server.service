@@ -1,0 +1,45 @@
+[Unit]
+Description=KitchenChaos Authoritative Game Server (TCP 7777)
+Documentation=https://github.com/chen-hao-lang/KitchenChaos-Study
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 若以 root 部署，把 User/Group 两行删掉或改为 root
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/kitchenchaos-server
+
+# 端口通过命令行首参传入，与服务端 Program.cs 的 args[0] 约定一致
+ExecStart=/opt/kitchenchaos-server/KitchenChaos-Server 7777
+
+# 单文件自包含发布包会在首次运行时解压原生库；指定固定目录，避免落到 /tmp 或被 ProtectHome 拦截
+Environment=DOTNET_BUNDLE_EXTRACT_BASE_DIR=/opt/kitchenchaos-server/.bundle
+
+# 崩溃自动拉起
+Restart=always
+RestartSec=3
+
+# 无交互终端。前提：已按指南 §5.1 移除 Program.cs 中的 Console.ReadKey()
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kc-server
+
+# 优雅停止：进程内捕获 SIGTERM 后调用 GameServer.Stop()
+KillSignal=SIGTERM
+TimeoutStopSec=10
+LimitNOFILE=65535
+
+# 最小权限加固（本服务不读写业务文件，可放心开启）
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateDevices=true
+
+# 可选：调试客户端保活超时（秒），服务端默认 600
+# Environment=KC_DEBUG_CLIENT_TIMEOUT=600
+
+[Install]
+WantedBy=multi-user.target

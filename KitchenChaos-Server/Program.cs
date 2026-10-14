@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 
 namespace KitchenChaos_Server
 {
@@ -29,7 +30,19 @@ namespace KitchenChaos_Server
             }
 
             Console.WriteLine("服务器已启动，按任意键关闭...");
-            Console.ReadKey();
+
+            using (var exitSignal = new ManualResetEventSlim(false))
+            {
+                Console.CancelKeyPress += (_, e) =>
+                {
+                    e.Cancel = true;          // 阻止默认的强制终止
+                    exitSignal.Set();
+                };
+                AppDomain.CurrentDomain.ProcessExit += (_, _) => exitSignal.Set();
+                System.Runtime.Loader.AssemblyLoadContext.Default.Unloading += _ => exitSignal.Set();
+
+                exitSignal.Wait();
+            }
 
             server.Stop();
             Console.WriteLine("服务器已关闭。");

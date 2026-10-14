@@ -236,9 +236,10 @@ namespace KitchenChaos_Server.Room
         /// <summary>
         /// 开始游戏
         /// </summary>
-        /// <param name="_client"></param>
-        /// <param name="_roomId"></param>
-        public void EnterGameScene(ServerClient _client,int _roomId)
+        /// <param name="_client">发起请求的客户端（必须是房主）</param>
+        /// <param name="_roomId">房间号</param>
+        /// <param name="_levelIndex">房主选定的关卡索引</param>
+        public void EnterGameScene(ServerClient _client,int _roomId, int _levelIndex)
         {
             lock (roomsLock)
             {
@@ -254,7 +255,7 @@ namespace KitchenChaos_Server.Room
                     return;
                 }
 
-                room.EnterGameScene();
+                room.EnterGameScene(_levelIndex);
             }
         }
 
